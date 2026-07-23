@@ -1,7 +1,7 @@
 import { KeygenClient } from '../client';
-import { Entitlement, KeygenResponse, ListOptions, KeygenListResponse } from '../../types/keygen';
+import { Entitlement, KeygenResponse, PaginationOptions, ListOptions, KeygenListResponse } from '../../types/keygen';
 
-export interface EntitlementFilters extends ListOptions {
+export interface EntitlementFilters extends PaginationOptions {
   name?: string;
   code?: string;
 }

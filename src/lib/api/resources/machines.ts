@@ -1,5 +1,5 @@
 import { KeygenClient } from '../client';
-import { Machine, MachineFilters, KeygenResponse } from '@/lib/types/keygen';
+import { Machine, MachineFilters, KeygenResponse, KeygenListResponse } from '@/lib/types/keygen';
 
 export class MachineResource {
   constructor(private client: KeygenClient) {}
@@ -7,7 +7,7 @@ export class MachineResource {
   /**
    * List all machines
    */
-  async list(filters: MachineFilters = {}): Promise<KeygenResponse<Machine[]>> {
+  async list(filters: MachineFilters = {}): Promise<KeygenListResponse<Machine>> {
     const params = {
       ...this.client.buildPaginationParams(filters),
     };

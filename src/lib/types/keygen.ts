@@ -66,6 +66,20 @@ export interface AuthTokenResponse {
   };
 }
 
+// Token (API key)
+export interface Token extends KeygenResource {
+  type: 'tokens';
+  attributes: {
+    kind: string; // e.g. 'user-token', 'admin-token'
+    token?: string; // raw secret — only ever present in the create/regenerate response
+    name?: string;
+    expiry: string | null;
+    permissions?: string[];
+    created: string;
+    updated: string;
+  };
+}
+
 // User
 export interface User extends KeygenResource {
   type: 'users';
@@ -78,6 +92,7 @@ export interface User extends KeygenResource {
     status: 'active' | 'inactive' | 'banned';
     banned?: boolean; // Legacy property for backward compatibility
     lastSignedInAt?: string;
+    metadata?: Record<string, unknown>;
     created: string;
     updated: string;
   };

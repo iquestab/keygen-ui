@@ -1,7 +1,7 @@
 import { KeygenClient } from '../client';
-import { Group, KeygenResponse, ListOptions, KeygenListResponse } from '../../types/keygen';
+import { Group, KeygenResponse, PaginationOptions, ListOptions, KeygenListResponse } from '../../types/keygen';
 
-export interface GroupFilters extends ListOptions {
+export interface GroupFilters extends PaginationOptions {
   name?: string;
   maxLicenses?: number;
   maxMachines?: number;

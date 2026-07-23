@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { HelpCircle } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface EditGroupDialogProps {
@@ -33,9 +35,11 @@ export function EditGroupDialog({
 
   const api = getKeygenApi()
 
-  // Initialize form data when group changes
+  // Initialize form data when the dialog opens for a group — keyed on `open` as
+  // well as `group` so reopening after a cancelled edit doesn't show stale input
+  // (the parent passes the same object reference from the still-loaded list).
   useEffect(() => {
-    if (group) {
+    if (open && group) {
       setFormData({
         name: group.attributes.name,
         maxLicenses: group.attributes.maxLicenses?.toString() || '',
@@ -43,7 +47,7 @@ export function EditGroupDialog({
         maxUsers: group.attributes.maxUsers?.toString() || ''
       })
     }
-  }, [group])
+  }, [open, group])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -107,7 +111,15 @@ export function EditGroupDialog({
           
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="name">Group Name *</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="name">Group Name *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>A human-readable label to help you identify this group</TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="name"
                 value={formData.name}
@@ -119,7 +131,15 @@ export function EditGroupDialog({
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="maxLicenses">Max Licenses</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="maxLicenses">Max Licenses</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Caps how many licenses can belong to this group. Leave blank for unlimited.</TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="maxLicenses"
                 type="number"
@@ -132,7 +152,15 @@ export function EditGroupDialog({
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="maxMachines">Max Machines</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="maxMachines">Max Machines</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Caps how many machines can belong to this group. Leave blank for unlimited.</TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="maxMachines"
                 type="number"
@@ -145,7 +173,15 @@ export function EditGroupDialog({
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="maxUsers">Max Users</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="maxUsers">Max Users</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Caps how many users can belong to this group. Leave blank for unlimited.</TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="maxUsers"
                 type="number"

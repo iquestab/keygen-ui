@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth/context';
 import { Loader2 } from 'lucide-react';
 
@@ -13,10 +13,11 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({ children, requireAdmin = false }: ProtectedRouteProps) {
   const { user, loading, isAuthenticated } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
-      router.push('/login');
+      router.push(`/login?redirect=${encodeURIComponent(pathname)}`);
       return;
     }
 
@@ -25,7 +26,7 @@ export function ProtectedRoute({ children, requireAdmin = false }: ProtectedRout
       router.push('/dashboard');
       return;
     }
-  }, [loading, isAuthenticated, user, router, requireAdmin]);
+  }, [loading, isAuthenticated, user, router, requireAdmin, pathname]);
 
   if (loading) {
     return (

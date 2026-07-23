@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { 
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -15,7 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { 
+import {
   Table,
   TableBody,
   TableCell,
@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { 
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -47,6 +47,19 @@ import { toast } from 'sonner'
 import { handleLoadError, handleCrudError } from '@/lib/utils/error-handling'
 import { ActivateMachineDialog } from './activate-machine-dialog'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import { PaginationControls } from '@/components/shared/pagination-controls'
+
+const DEFAULT_PAGE_SIZE = 25
+const SEARCH_DEBOUNCE_MS = 300
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedValue(value), delay)
+    return () => clearTimeout(timer)
+  }, [value, delay])
+  return debouncedValue
+}
 
 export function MachineManagement() {
   const [machines, setMachines] = useState<Machine[]>([])
@@ -58,37 +71,104 @@ export function MachineManagement() {
   const [pendingMachine, setPendingMachine] = useState<Machine | null>(null)
   const [confirmLoading, setConfirmLoading] = useState(false)
 
-  const loadMachines = useCallback(async () => {
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE)
+  const [totalCount, setTotalCount] = useState(0)
+
+  // Search state
+  const [isSearchMode, setIsSearchMode] = useState(false)
+  const debouncedSearch = useDebounce(searchTerm, SEARCH_DEBOUNCE_MS)
+
+  // Build search query from the search term.
+  // Uses OR logic so any matching field returns results.
+  const buildSearchQuery = useCallback((term: string) => {
+    const query: Record<string, string> = {}
+    if (term.length < 3) return query
+
+    // Always search by name (ILIKE substring match)
+    query.name = term
+
+    // If it looks like a UUID, search by id
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-/i
+    if (uuidPattern.test(term)) {
+      query.id = term
+    }
+
+    // Speculative fields — not documented as searchable, but harmless to
+    // include with OR since a non-matching field simply contributes nothing
+    query.fingerprint = term
+    query.ip = term
+
+    return query
+  }, [])
+
+  // Unified data loader: handles both search and browse modes
+  const loadData = useCallback(async () => {
     try {
       setLoading(true)
-      const response = await api.machines.list({
-        limit: 50,
-        ...(statusFilter !== 'all' && { status: statusFilter })
-      })
-      setMachines(response.data || [])
+      const searchQuery = debouncedSearch ? buildSearchQuery(debouncedSearch) : null
+      const hasValidSearch = searchQuery && Object.keys(searchQuery).length > 0
+
+      if (hasValidSearch) {
+        // Server-side search via POST /search with pagination
+        setIsSearchMode(true)
+        const response = await api.search.search<Machine>({
+          type: 'machines',
+          query: searchQuery,
+          op: 'OR',
+          page: { size: pageSize, number: currentPage },
+        })
+        setMachines(response.data || [])
+        setTotalCount(response.meta?.count ?? (response.data?.length || 0))
+      } else {
+        // Normal paginated browsing
+        setIsSearchMode(false)
+        const response = await api.machines.list({
+          page: { size: pageSize, number: currentPage },
+        })
+        setMachines(response.data || [])
+        setTotalCount(response.meta?.count ?? (response.data?.length || 0))
+      }
     } catch (error: unknown) {
       handleLoadError(error, 'machines')
     } finally {
       setLoading(false)
     }
-  }, [api.machines, statusFilter])
+  }, [api.machines, api.search, pageSize, currentPage, debouncedSearch, buildSearchQuery])
 
+  // Load data whenever dependencies change
   useEffect(() => {
-    loadMachines()
-  }, [loadMachines])
+    loadData()
+  }, [loadData])
 
+  // Reset to page 1 when filters or search change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [statusFilter, pageSize, debouncedSearch])
+
+  // After activating a machine, jump to page 1 — newly created records are
+  // returned first (reverse-chronological order), so this is where the new
+  // machine will be. If we're already on page 1, force a reload explicitly
+  // instead of relying on the page-reset effect above.
+  const handleMachineActivated = useCallback(() => {
+    if (currentPage !== 1) {
+      setCurrentPage(1)
+    } else {
+      loadData()
+    }
+  }, [currentPage, loadData])
+
+  // Client-side heartbeat status filter — applied only to the currently
+  // loaded page, since heartbeatStatus is not a confirmed server-searchable
+  // field. This is on top of the properly paginated `machines` state.
   const filteredMachines = machines.filter(machine => {
-    const matchesSearch = !searchTerm || 
-      machine.attributes.fingerprint?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      machine.attributes.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      machine.attributes.ip?.toLowerCase().includes(searchTerm.toLowerCase())
-    
-    const matchesStatus = statusFilter === 'all' || 
+    const matchesStatus = statusFilter === 'all' ||
       (statusFilter === 'active' && machine.attributes.heartbeatStatus === 'alive') ||
       (statusFilter === 'inactive' && machine.attributes.heartbeatStatus === 'dead') ||
       (statusFilter === 'not-started' && machine.attributes.heartbeatStatus === 'not-started')
-    
-    return matchesSearch && matchesStatus
+
+    return matchesStatus
   })
 
   const getStatusColor = (heartbeatStatus: string) => {
@@ -129,7 +209,7 @@ export function MachineManagement() {
     setConfirmLoading(true)
     try {
       await api.machines.deactivate(pendingMachine.id)
-      await loadMachines()
+      await loadData()
       toast.success('Machine deleted successfully')
       setConfirmDeleteOpen(false)
       setPendingMachine(null)
@@ -162,7 +242,7 @@ export function MachineManagement() {
             Monitor and manage licensed machines
           </p>
         </div>
-        <ActivateMachineDialog onMachineActivated={loadMachines} />
+        <ActivateMachineDialog onMachineActivated={handleMachineActivated} />
       </div>
 
       {/* Stats Cards */}
@@ -173,9 +253,9 @@ export function MachineManagement() {
             <Monitor className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{machines.length}</div>
+            <div className="text-2xl font-bold">{totalCount}</div>
             <p className="text-xs text-muted-foreground">
-              Registered machines
+              {isSearchMode ? 'Matching search' : 'Registered machines'}
             </p>
           </CardContent>
         </Card>
@@ -189,7 +269,7 @@ export function MachineManagement() {
               {machines.filter(m => m.attributes.heartbeatStatus === 'alive').length}
             </div>
             <p className="text-xs text-muted-foreground">
-              Currently online
+              On current page
             </p>
           </CardContent>
         </Card>
@@ -355,7 +435,17 @@ export function MachineManagement() {
               </TableBody>
             </Table>
           )}
-          
+
+          {!loading && (
+            <PaginationControls
+              currentPage={currentPage}
+              pageSize={pageSize}
+              totalCount={totalCount}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+            />
+          )}
+
           {!loading && filteredMachines.length === 0 && (
             <div className="flex items-center justify-center h-32">
               <div className="text-center">

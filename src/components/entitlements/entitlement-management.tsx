@@ -17,6 +17,19 @@ import { CreateEntitlementDialog } from './create-entitlement-dialog'
 import { EditEntitlementDialog } from './edit-entitlement-dialog'
 import { DeleteEntitlementDialog } from './delete-entitlement-dialog'
 import { EntitlementDetailsDialog } from './entitlement-details-dialog'
+import { PaginationControls } from '@/components/shared/pagination-controls'
+
+const DEFAULT_PAGE_SIZE = 25
+const SEARCH_DEBOUNCE_MS = 300
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedValue(value), delay)
+    return () => clearTimeout(timer)
+  }, [value, delay])
+  return debouncedValue
+}
 
 export function EntitlementManagement() {
   const [entitlements, setEntitlements] = useState<Entitlement[]>([])
@@ -27,23 +40,72 @@ export function EntitlementManagement() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false)
   const [selectedEntitlement, setSelectedEntitlement] = useState<Entitlement | null>(null)
-  
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE)
+  const [totalCount, setTotalCount] = useState(0)
+
+  // Search state
+  const [isSearchMode, setIsSearchMode] = useState(false)
+  const debouncedSearch = useDebounce(searchTerm, SEARCH_DEBOUNCE_MS)
+
   const api = getKeygenApi()
 
-  const loadEntitlements = useCallback(async () => {
+  const buildSearchQuery = useCallback((term: string) => {
+    const query: Record<string, string> = {}
+    if (term.length < 3) return query
+
+    query.name = term
+    query.code = term
+
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-/i
+    if (uuidPattern.test(term)) {
+      query.id = term
+    }
+
+    return query
+  }, [])
+
+  const loadData = useCallback(async () => {
     try {
-      const response = await api.entitlements.list({ limit: 100 })
-      setEntitlements(response.data || [])
+      setLoading(true)
+      const searchQuery = debouncedSearch ? buildSearchQuery(debouncedSearch) : null
+      const hasValidSearch = searchQuery && Object.keys(searchQuery).length > 0
+
+      if (hasValidSearch) {
+        setIsSearchMode(true)
+        const response = await api.search.search<Entitlement>({
+          type: 'entitlements',
+          query: searchQuery,
+          op: 'OR',
+          page: { size: pageSize, number: currentPage },
+        })
+        setEntitlements(response.data || [])
+        setTotalCount(response.meta?.count ?? (response.data?.length || 0))
+      } else {
+        setIsSearchMode(false)
+        const response = await api.entitlements.list({
+          page: { size: pageSize, number: currentPage },
+        })
+        setEntitlements(response.data || [])
+        setTotalCount(response.meta?.count ?? (response.data?.length || 0))
+      }
     } catch (error: unknown) {
       handleLoadError(error, 'entitlements')
     } finally {
       setLoading(false)
     }
-  }, [api.entitlements])
+  }, [api.entitlements, api.search, pageSize, currentPage, debouncedSearch, buildSearchQuery])
 
   useEffect(() => {
-    loadEntitlements()
-  }, [loadEntitlements])
+    loadData()
+  }, [loadData])
+
+  // Reset to page 1 when search changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [pageSize, debouncedSearch])
 
   const handleEdit = (entitlement: Entitlement) => {
     setSelectedEntitlement(entitlement)
@@ -62,28 +124,35 @@ export function EntitlementManagement() {
 
   const handleEntitlementCreated = () => {
     setCreateDialogOpen(false)
-    loadEntitlements()
+    // Jump to page 1 — newly created records are returned first (reverse-
+    // chronological order), so this is where the new entitlement will be. If
+    // we're already on page 1, the page-number state won't change, so force a
+    // reload explicitly instead of relying on the page-reset effect above.
+    if (currentPage !== 1) {
+      setCurrentPage(1)
+    } else {
+      loadData()
+    }
     toast.success('Entitlement created successfully')
   }
 
   const handleEntitlementUpdated = () => {
     setEditDialogOpen(false)
     setSelectedEntitlement(null)
-    loadEntitlements()
+    loadData()
     toast.success('Entitlement updated successfully')
   }
 
   const handleEntitlementDeleted = () => {
     setDeleteDialogOpen(false)
     setSelectedEntitlement(null)
-    loadEntitlements()
+    loadData()
     toast.success('Entitlement deleted successfully')
   }
 
-  const filteredEntitlements = entitlements.filter(entitlement => 
-    entitlement.attributes.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    entitlement.attributes.code.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  // `entitlements` is already the current server page (and, in search mode, the
+  // matching set) — no further client-side filtering needed on top of it.
+  const filteredEntitlements = entitlements
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -133,10 +202,10 @@ export function EntitlementManagement() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Shield className="h-5 w-5" />
-            Entitlements ({filteredEntitlements.length})
+            Entitlements ({totalCount})
           </CardTitle>
           <CardDescription>
-            Manage feature toggles and permissions
+            {isSearchMode ? 'Matching search' : 'Manage feature toggles and permissions'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -207,6 +276,16 @@ export function EntitlementManagement() {
                 )}
               </TableBody>
             </Table>
+          )}
+
+          {!loading && (
+            <PaginationControls
+              currentPage={currentPage}
+              pageSize={pageSize}
+              totalCount={totalCount}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+            />
           )}
         </CardContent>
       </Card>

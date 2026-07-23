@@ -21,7 +21,8 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Package } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Package, HelpCircle } from 'lucide-react'
 import { getKeygenApi } from '@/lib/api'
 import { toast } from 'sonner'
 import { Product } from '@/lib/types/keygen'
@@ -63,9 +64,11 @@ export function EditProductDialog({
 
   const api = getKeygenApi()
 
-  // Initialize form data when product changes
+  // Initialize form data when the dialog opens for a product — keyed on `open` as
+  // well as `product` so reopening after a cancelled edit doesn't show stale input
+  // (the parent passes the same object reference from the still-loaded list).
   useEffect(() => {
-    if (product) {
+    if (open && product) {
       setFormData({
         name: product.attributes.name || '',
         code: product.attributes.code || '',
@@ -75,7 +78,7 @@ export function EditProductDialog({
         metadata: product.attributes.metadata ? JSON.stringify(product.attributes.metadata, null, 2) : ''
       })
     }
-  }, [product])
+  }, [open, product])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -173,7 +176,15 @@ export function EditProductDialog({
             
             <div className="grid grid-cols-1 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-name">Product Name *</Label>
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="edit-name">Product Name *</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>The display name for this product, shown throughout the dashboard</TooltipContent>
+                  </Tooltip>
+                </div>
                 <Input
                   id="edit-name"
                   placeholder="e.g., My Awesome App"
@@ -182,9 +193,17 @@ export function EditProductDialog({
                   required
                 />
               </div>
-              
+
               <div className="space-y-2">
-                <Label htmlFor="edit-code">Product Code</Label>
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="edit-code">Product Code</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>A unique, URL-safe identifier for this product, used to reference it programmatically</TooltipContent>
+                  </Tooltip>
+                </div>
                 <div className="flex gap-2">
                   <Input
                     id="edit-code"
@@ -208,7 +227,15 @@ export function EditProductDialog({
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="edit-url">Product URL</Label>
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="edit-url">Product URL</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>Website or documentation URL for this product (optional)</TooltipContent>
+                  </Tooltip>
+                </div>
                 <Input
                   id="edit-url"
                   type="url"
@@ -227,7 +254,15 @@ export function EditProductDialog({
           <div className="space-y-4">
             <h4 className="text-sm font-medium">Distribution Strategy</h4>
             <div className="space-y-2">
-              <Label htmlFor="edit-strategy">Strategy *</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="edit-strategy">Strategy *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Licensed requires a valid license to use; Open is freely available to anyone; Closed restricts access entirely</TooltipContent>
+                </Tooltip>
+              </div>
               <Select
                 value={formData.distributionStrategy}
                 onValueChange={(value: 'LICENSED' | 'OPEN' | 'CLOSED') => setFormData({ ...formData, distributionStrategy: value })}
@@ -270,7 +305,15 @@ export function EditProductDialog({
 
           {/* Supported Platforms */}
           <div className="space-y-4">
-            <h4 className="text-sm font-medium">Supported Platforms</h4>
+            <div className="flex items-center gap-1">
+              <h4 className="text-sm font-medium">Supported Platforms</h4>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="size-3.5 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent>Select every platform this product runs on (optional, informational only)</TooltipContent>
+              </Tooltip>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               {PLATFORM_OPTIONS.map((platform) => (
                 <div key={platform} className="flex items-center space-x-2">
@@ -299,7 +342,15 @@ export function EditProductDialog({
           <div className="space-y-4">
             <h4 className="text-sm font-medium">Metadata (Optional)</h4>
             <div className="space-y-2">
-              <Label htmlFor="edit-metadata">Custom Metadata (JSON)</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="edit-metadata">Custom Metadata (JSON)</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Freeform JSON object for your own custom tracking data</TooltipContent>
+                </Tooltip>
+              </div>
               <Textarea
                 id="edit-metadata"
                 placeholder='{&quot;version&quot;: &quot;1.0.0&quot;, &quot;category&quot;: &quot;productivity&quot;}'

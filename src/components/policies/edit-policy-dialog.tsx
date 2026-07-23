@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -9,7 +9,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -23,25 +22,28 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { Plus, HelpCircle } from 'lucide-react'
+import { Shield, HelpCircle } from 'lucide-react'
 import { getKeygenApi } from '@/lib/api'
 import { toast } from 'sonner'
-import { Product } from '@/lib/types/keygen'
-import { handleFormError, handleLoadError } from '@/lib/utils/error-handling'
-import { useEffect, useCallback } from 'react'
+import { Policy } from '@/lib/types/keygen'
+import { handleCrudError } from '@/lib/utils/error-handling'
 
-interface CreatePolicyDialogProps {
-  onPolicyCreated?: () => void
+interface EditPolicyDialogProps {
+  policy: Policy | null
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onPolicyUpdated?: () => void
 }
 
-export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps) {
-  const [open, setOpen] = useState(false)
+export function EditPolicyDialog({
+  policy,
+  open,
+  onOpenChange,
+  onPolicyUpdated
+}: EditPolicyDialogProps) {
   const [loading, setLoading] = useState(false)
-  const [products, setProducts] = useState<Product[]>([])
-  const [productsLoading, setProductsLoading] = useState(false)
   const [formData, setFormData] = useState({
     name: '',
-    productId: '',
     duration: '',
     strict: false,
     floating: false,
@@ -64,11 +66,12 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
     metadata: ''
   })
 
-  // Keygen's API has previously rejected policy creation with "unpermitted parameter"
-  // errors when these strategy fields are sent unconditionally (see CLAUDE.md). Since
-  // they're Selects with real default values (not blank placeholders), we can't tell
-  // "user picked the default" from "user never touched this" any other way — so track
-  // it explicitly and only send a strategy if the user actually changed it.
+  // As with create-policy-dialog.tsx: Keygen's API has previously rejected policy
+  // writes with "unpermitted parameter" errors when these strategy fields are sent
+  // unconditionally. Even though these Selects are initialized from the policy's
+  // real current values here (not a fixed default), the risk is with the parameter
+  // *name* being sent at all, not its value — so only send a strategy if the user
+  // actually changed it during this edit.
   const [touchedStrategies, setTouchedStrategies] = useState({
     authenticationStrategy: false,
     expirationStrategy: false,
@@ -85,60 +88,77 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
 
   const api = getKeygenApi()
 
-  // Load products when dialog opens
-  const loadProducts = useCallback(async () => {
-    try {
-      setProductsLoading(true)
-      const response = await api.products.list({ limit: 50 })
-      setProducts(response.data || [])
-    } catch (error: unknown) {
-      handleLoadError(error, 'products')
-    } finally {
-      setProductsLoading(false)
-    }
-  }, [api.products])
-
+  // Initialize form data when the dialog opens for a policy — keyed on `open` as
+  // well as `policy` so reopening after a cancelled edit doesn't show stale input
+  // (the parent passes the same object reference from the still-loaded list).
   useEffect(() => {
-    if (open && products.length === 0) {
-      loadProducts()
+    if (open && policy) {
+      setFormData({
+        name: policy.attributes.name || '',
+        duration: policy.attributes.duration ? String(policy.attributes.duration) : '',
+        strict: policy.attributes.strict,
+        floating: policy.attributes.floating,
+        protected: policy.attributes.protected,
+        requireHeartbeat: policy.attributes.requireHeartbeat,
+        heartbeatDuration: policy.attributes.heartbeatDuration ? String(policy.attributes.heartbeatDuration) : '3600',
+        heartbeatCullStrategy: policy.attributes.heartbeatCullStrategy || 'DEACTIVATE_DEAD',
+        heartbeatResurrectionStrategy: (policy.attributes.heartbeatResurrectionStrategy === 'REVIVE_DEAD' ? 'ALWAYS_REVIVE' : policy.attributes.heartbeatResurrectionStrategy) || 'NO_REVIVE',
+        heartbeatBasis: policy.attributes.heartbeatBasis || 'FROM_CREATION',
+        machineUniquenessStrategy: 'UNIQUE_PER_LICENSE',
+        machineMatchingStrategy: 'MATCH_ANY',
+        expirationStrategy: (policy.attributes.expirationStrategy as 'RESTRICT_ACCESS' | 'REVOKE_ACCESS' | 'MAINTAIN_ACCESS') || 'RESTRICT_ACCESS',
+        expirationBasis: policy.attributes.expirationBasis || 'FROM_CREATION',
+        renewalBasis: policy.attributes.renewalBasis || 'FROM_EXPIRY',
+        transferStrategy: 'RESET_EXPIRY',
+        authenticationStrategy: policy.attributes.authenticationStrategy || 'TOKEN',
+        machineLeasingStrategy: 'PER_LICENSE',
+        processLeasingStrategy: 'PER_MACHINE',
+        overageStrategy: policy.attributes.overageStrategy || 'NO_OVERAGE',
+        metadata: policy.attributes.metadata ? JSON.stringify(policy.attributes.metadata, null, 2) : ''
+      })
+      setTouchedStrategies({
+        authenticationStrategy: false,
+        expirationStrategy: false,
+        overageStrategy: false,
+        machineUniquenessStrategy: false,
+        machineMatchingStrategy: false,
+        expirationBasis: false,
+        renewalBasis: false,
+        transferStrategy: false,
+        machineLeasingStrategy: false,
+        processLeasingStrategy: false,
+        heartbeatResurrectionStrategy: false,
+      })
     }
-  }, [open, products.length, loadProducts])
+  }, [open, policy])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
+    if (!policy) return
+
     if (!formData.name.trim()) {
       toast.error('Policy name is required')
-      return
-    }
-
-    if (!formData.productId) {
-      toast.error('Please select a product')
       return
     }
 
     try {
       setLoading(true)
 
-      // Build policy data with all user-selected options
       const policyData: Record<string, unknown> = {
         name: formData.name.trim(),
-        productId: formData.productId
       }
 
-      // Add duration if specified
-      if (formData.duration && formData.duration.trim()) {
+      if (formData.duration.trim()) {
         policyData.duration = parseInt(formData.duration)
       }
 
-      // Add boolean flags if enabled
-      if (formData.strict) policyData.strict = true
-      if (formData.floating) policyData.floating = true
-      if (formData.protected) policyData.protected = true
+      policyData.strict = formData.strict
+      policyData.floating = formData.floating
+      policyData.protected = formData.protected
 
-      // Add heartbeat settings if heartbeat is required
+      policyData.requireHeartbeat = formData.requireHeartbeat
       if (formData.requireHeartbeat) {
-        policyData.requireHeartbeat = true
         if (formData.heartbeatDuration) {
           policyData.heartbeatDuration = parseInt(formData.heartbeatDuration)
         }
@@ -149,8 +169,6 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
         }
       }
 
-      // Only send strategy fields the user actually changed from their default —
-      // sending them unconditionally previously caused "unpermitted parameter" errors.
       if (touchedStrategies.authenticationStrategy) {
         policyData.authenticationStrategy = formData.authenticationStrategy
       }
@@ -182,8 +200,7 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
         policyData.processLeasingStrategy = formData.processLeasingStrategy
       }
 
-      // Add metadata if provided
-      if (formData.metadata && formData.metadata.trim()) {
+      if (formData.metadata.trim()) {
         try {
           policyData.metadata = JSON.parse(formData.metadata)
         } catch {
@@ -191,83 +208,41 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
         }
       }
 
-      await api.policies.create(policyData as { name: string; productId: string; duration?: number })
+      await api.policies.update(policy.id, policyData)
 
-      toast.success('Policy created successfully')
-      setOpen(false)
-      resetForm()
-      onPolicyCreated?.()
+      toast.success('Policy updated successfully')
+      onOpenChange(false)
+      onPolicyUpdated?.()
     } catch (error: unknown) {
-      handleFormError(error, 'Policy')
+      handleCrudError(error, 'update', 'Policy')
     } finally {
       setLoading(false)
     }
   }
 
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      productId: '',
-      duration: '',
-      strict: false,
-      floating: false,
-      protected: false,
-      requireHeartbeat: false,
-      heartbeatDuration: '3600',
-      heartbeatCullStrategy: 'DEACTIVATE_DEAD',
-      heartbeatResurrectionStrategy: 'NO_REVIVE',
-      heartbeatBasis: 'FROM_CREATION',
-      machineUniquenessStrategy: 'UNIQUE_PER_LICENSE',
-      machineMatchingStrategy: 'MATCH_ANY',
-      expirationStrategy: 'RESTRICT_ACCESS',
-      expirationBasis: 'FROM_CREATION',
-      renewalBasis: 'FROM_EXPIRY',
-      transferStrategy: 'RESET_EXPIRY',
-      authenticationStrategy: 'TOKEN',
-      machineLeasingStrategy: 'PER_LICENSE',
-      processLeasingStrategy: 'PER_MACHINE',
-      overageStrategy: 'NO_OVERAGE',
-      metadata: ''
-    })
-    setTouchedStrategies({
-      authenticationStrategy: false,
-      expirationStrategy: false,
-      overageStrategy: false,
-      machineUniquenessStrategy: false,
-      machineMatchingStrategy: false,
-      expirationBasis: false,
-      renewalBasis: false,
-      transferStrategy: false,
-      machineLeasingStrategy: false,
-      processLeasingStrategy: false,
-      heartbeatResurrectionStrategy: false,
-    })
-  }
+  if (!policy) return null
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Create Policy
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Create New Policy</DialogTitle>
+          <DialogTitle>Edit Policy</DialogTitle>
           <DialogDescription>
-            Create a new licensing policy with specific rules and constraints for your products.
+            Update the policy&apos;s rules and constraints.
           </DialogDescription>
         </DialogHeader>
-        
+
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Basic Information */}
           <div className="space-y-4">
-            <h4 className="text-sm font-medium">Basic Information</h4>
+            <h4 className="text-sm font-medium flex items-center gap-2">
+              <Shield className="h-4 w-4" />
+              Basic Information
+            </h4>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <div className="flex items-center gap-1">
-                  <Label htmlFor="name">Policy Name *</Label>
+                  <Label htmlFor="edit-policy-name">Policy Name *</Label>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <HelpCircle className="size-3.5 text-muted-foreground" />
@@ -276,8 +251,7 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
                   </Tooltip>
                 </div>
                 <Input
-                  id="name"
-                  placeholder="e.g., Standard License Policy"
+                  id="edit-policy-name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   required
@@ -285,35 +259,7 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
               </div>
               <div className="space-y-2">
                 <div className="flex items-center gap-1">
-                  <Label htmlFor="product">Product *</Label>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <HelpCircle className="size-3.5 text-muted-foreground" />
-                    </TooltipTrigger>
-                    <TooltipContent>The product this policy&apos;s licenses will belong to</TooltipContent>
-                  </Tooltip>
-                </div>
-                <Select
-                  value={formData.productId}
-                  onValueChange={(value) => setFormData({ ...formData, productId: value })}
-                  required
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={productsLoading ? "Loading products..." : "Select a product"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {products.map((product) => (
-                      <SelectItem key={product.id} value={product.id}>
-                        {product.attributes.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">Choose which product this policy applies to</p>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center gap-1">
-                  <Label htmlFor="duration">Duration (seconds)</Label>
+                  <Label htmlFor="edit-policy-duration">Duration (seconds)</Label>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <HelpCircle className="size-3.5 text-muted-foreground" />
@@ -322,7 +268,7 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
                   </Tooltip>
                 </div>
                 <Input
-                  id="duration"
+                  id="edit-policy-duration"
                   type="number"
                   placeholder="e.g., 86400 (1 day)"
                   value={formData.duration}
@@ -339,11 +285,11 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
             <div className="grid grid-cols-2 gap-4">
               <div className="flex items-center space-x-2">
                 <Checkbox
-                  id="strict"
+                  id="edit-strict"
                   checked={formData.strict}
                   onCheckedChange={(checked) => setFormData({ ...formData, strict: !!checked })}
                 />
-                <Label htmlFor="strict">Strict validation</Label>
+                <Label htmlFor="edit-strict">Strict validation</Label>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <HelpCircle className="size-3.5 text-muted-foreground" />
@@ -353,11 +299,11 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
               </div>
               <div className="flex items-center space-x-2">
                 <Checkbox
-                  id="floating"
+                  id="edit-floating"
                   checked={formData.floating}
                   onCheckedChange={(checked) => setFormData({ ...formData, floating: !!checked })}
                 />
-                <Label htmlFor="floating">Floating license</Label>
+                <Label htmlFor="edit-floating">Floating license</Label>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <HelpCircle className="size-3.5 text-muted-foreground" />
@@ -367,11 +313,11 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
               </div>
               <div className="flex items-center space-x-2">
                 <Checkbox
-                  id="protected"
+                  id="edit-protected"
                   checked={formData.protected}
                   onCheckedChange={(checked) => setFormData({ ...formData, protected: !!checked })}
                 />
-                <Label htmlFor="protected">Write-protected</Label>
+                <Label htmlFor="edit-protected">Write-protected</Label>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <HelpCircle className="size-3.5 text-muted-foreground" />
@@ -388,11 +334,11 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
             <div className="space-y-4">
               <div className="flex items-center space-x-2">
                 <Checkbox
-                  id="requireHeartbeat"
+                  id="edit-requireHeartbeat"
                   checked={formData.requireHeartbeat}
                   onCheckedChange={(checked) => setFormData({ ...formData, requireHeartbeat: !!checked })}
                 />
-                <Label htmlFor="requireHeartbeat">Require heartbeat</Label>
+                <Label htmlFor="edit-requireHeartbeat">Require heartbeat</Label>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <HelpCircle className="size-3.5 text-muted-foreground" />
@@ -402,10 +348,10 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
               </div>
 
               {formData.requireHeartbeat && (
-                <div className="grid grid-cols-3 gap-4 ml-6">
+                <div className="grid grid-cols-2 gap-4 ml-6">
                   <div className="space-y-2">
                     <div className="flex items-center gap-1">
-                      <Label htmlFor="heartbeatDuration">Heartbeat Duration (seconds)</Label>
+                      <Label htmlFor="edit-heartbeatDuration">Heartbeat Duration (seconds)</Label>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <HelpCircle className="size-3.5 text-muted-foreground" />
@@ -414,7 +360,7 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
                       </Tooltip>
                     </div>
                     <Input
-                      id="heartbeatDuration"
+                      id="edit-heartbeatDuration"
                       type="number"
                       value={formData.heartbeatDuration}
                       onChange={(e) => setFormData({ ...formData, heartbeatDuration: e.target.value })}
@@ -422,7 +368,7 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center gap-1">
-                      <Label htmlFor="heartbeatCullStrategy">Cull Strategy</Label>
+                      <Label htmlFor="edit-heartbeatCullStrategy">Cull Strategy</Label>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <HelpCircle className="size-3.5 text-muted-foreground" />
@@ -445,7 +391,7 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center gap-1">
-                      <Label htmlFor="heartbeatBasis">Heartbeat Basis</Label>
+                      <Label htmlFor="edit-heartbeatBasis">Heartbeat Basis</Label>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <HelpCircle className="size-3.5 text-muted-foreground" />
@@ -468,7 +414,7 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center gap-1">
-                      <Label htmlFor="heartbeatResurrectionStrategy">Resurrection Strategy</Label>
+                      <Label htmlFor="edit-heartbeatResurrectionStrategy">Resurrection Strategy</Label>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <HelpCircle className="size-3.5 text-muted-foreground" />
@@ -503,7 +449,7 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <div className="flex items-center gap-1">
-                  <Label htmlFor="expirationStrategy">Expiration Strategy</Label>
+                  <Label htmlFor="edit-expirationStrategy">Expiration Strategy</Label>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <HelpCircle className="size-3.5 text-muted-foreground" />
@@ -530,7 +476,7 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
               </div>
               <div className="space-y-2">
                 <div className="flex items-center gap-1">
-                  <Label htmlFor="authenticationStrategy">Authentication Strategy</Label>
+                  <Label htmlFor="edit-authenticationStrategy">Authentication Strategy</Label>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <HelpCircle className="size-3.5 text-muted-foreground" />
@@ -558,7 +504,7 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
               </div>
               <div className="space-y-2">
                 <div className="flex items-center gap-1">
-                  <Label htmlFor="overageStrategy">Overage Strategy</Label>
+                  <Label htmlFor="edit-overageStrategy">Overage Strategy</Label>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <HelpCircle className="size-3.5 text-muted-foreground" />
@@ -587,7 +533,7 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
               </div>
               <div className="space-y-2">
                 <div className="flex items-center gap-1">
-                  <Label htmlFor="machineUniquenessStrategy">Machine Uniqueness Strategy</Label>
+                  <Label htmlFor="edit-machineUniquenessStrategy">Machine Uniqueness Strategy</Label>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <HelpCircle className="size-3.5 text-muted-foreground" />
@@ -613,7 +559,7 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
               </div>
               <div className="space-y-2">
                 <div className="flex items-center gap-1">
-                  <Label htmlFor="machineMatchingStrategy">Machine Matching Strategy</Label>
+                  <Label htmlFor="edit-machineMatchingStrategy">Machine Matching Strategy</Label>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <HelpCircle className="size-3.5 text-muted-foreground" />
@@ -641,7 +587,7 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
               </div>
               <div className="space-y-2">
                 <div className="flex items-center gap-1">
-                  <Label htmlFor="expirationBasis">Expiration Basis</Label>
+                  <Label htmlFor="edit-expirationBasis">Expiration Basis</Label>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <HelpCircle className="size-3.5 text-muted-foreground" />
@@ -670,7 +616,7 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
               </div>
               <div className="space-y-2">
                 <div className="flex items-center gap-1">
-                  <Label htmlFor="renewalBasis">Renewal Basis</Label>
+                  <Label htmlFor="edit-renewalBasis">Renewal Basis</Label>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <HelpCircle className="size-3.5 text-muted-foreground" />
@@ -696,7 +642,7 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
               </div>
               <div className="space-y-2">
                 <div className="flex items-center gap-1">
-                  <Label htmlFor="transferStrategy">Transfer Strategy</Label>
+                  <Label htmlFor="edit-transferStrategy">Transfer Strategy</Label>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <HelpCircle className="size-3.5 text-muted-foreground" />
@@ -722,7 +668,7 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
               </div>
               <div className="space-y-2">
                 <div className="flex items-center gap-1">
-                  <Label htmlFor="machineLeasingStrategy">Machine Leasing Strategy</Label>
+                  <Label htmlFor="edit-machineLeasingStrategy">Machine Leasing Strategy</Label>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <HelpCircle className="size-3.5 text-muted-foreground" />
@@ -749,7 +695,7 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
               </div>
               <div className="space-y-2">
                 <div className="flex items-center gap-1">
-                  <Label htmlFor="processLeasingStrategy">Process Leasing Strategy</Label>
+                  <Label htmlFor="edit-processLeasingStrategy">Process Leasing Strategy</Label>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <HelpCircle className="size-3.5 text-muted-foreground" />
@@ -781,7 +727,7 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
           {/* Metadata */}
           <div className="space-y-2">
             <div className="flex items-center gap-1">
-              <Label htmlFor="metadata">Metadata (Optional)</Label>
+              <Label htmlFor="edit-metadata">Metadata (Optional)</Label>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <HelpCircle className="size-3.5 text-muted-foreground" />
@@ -790,7 +736,7 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
               </Tooltip>
             </div>
             <Textarea
-              id="metadata"
+              id="edit-metadata"
               placeholder='{&quot;description&quot;: &quot;Policy description&quot;, &quot;tags&quot;: [&quot;enterprise&quot;]}'
               value={formData.metadata}
               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData({ ...formData, metadata: e.target.value })}
@@ -802,11 +748,11 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => { setOpen(false); resetForm() }}>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? 'Creating...' : 'Create Policy'}
+              {loading ? 'Updating...' : 'Update Policy'}
             </Button>
           </DialogFooter>
         </form>

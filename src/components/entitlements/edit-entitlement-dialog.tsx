@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { HelpCircle } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface EditEntitlementDialogProps {
@@ -31,15 +33,17 @@ export function EditEntitlementDialog({
 
   const api = getKeygenApi()
 
-  // Initialize form data when entitlement changes
+  // Initialize form data when the dialog opens for an entitlement — keyed on `open`
+  // as well as `entitlement` so reopening after a cancelled edit doesn't show stale
+  // input (the parent passes the same object reference from the still-loaded list).
   useEffect(() => {
-    if (entitlement) {
+    if (open && entitlement) {
       setFormData({
         name: entitlement.attributes.name,
         code: entitlement.attributes.code
       })
     }
-  }, [entitlement])
+  }, [open, entitlement])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -92,7 +96,15 @@ export function EditEntitlementDialog({
           
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="name">Entitlement Name *</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="name">Entitlement Name *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>A human-readable label for this feature/entitlement, shown throughout the dashboard</TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="name"
                 value={formData.name}
@@ -104,7 +116,15 @@ export function EditEntitlementDialog({
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="code">Entitlement Code *</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="code">Entitlement Code *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>A unique, machine-readable identifier used to check for this entitlement in code (e.g. via the SDK)</TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="code"
                 value={formData.code}

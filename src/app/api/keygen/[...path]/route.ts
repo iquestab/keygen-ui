@@ -1,21 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
-import https from 'https'
-import nodeFetch from 'node-fetch'
-
-const KEYGEN_API_URL = process.env.NEXT_PUBLIC_KEYGEN_API_URL
-if (!KEYGEN_API_URL) {
-  throw new Error('Missing required environment variable: NEXT_PUBLIC_KEYGEN_API_URL')
-}
-
-// Extract base URL without /v1 suffix
-const BASE_URL = KEYGEN_API_URL.replace(/\/v1\/?$/, '')
-
-// Always validate TLS certificates — use NODE_TLS_REJECT_UNAUTHORIZED=0 or a custom CA
-// bundle in development if connecting to a self-signed Keygen instance.
-const httpsAgent = new https.Agent({
-  rejectUnauthorized: true,
-})
+import { KEYGEN_BASE_URL, fetchKeygen } from '@/lib/server/keygen-fetch'
 
 // Allowed top-level Keygen API path segments
 const ALLOWED_PATH_SEGMENTS = new Set([
@@ -70,7 +55,7 @@ async function proxyRequest(request: NextRequest, path: string[]) {
     )
   }
 
-  const targetUrl = `${BASE_URL}/v1/${path.join('/')}${request.nextUrl.search}`
+  const targetUrl = `${KEYGEN_BASE_URL}/v1/${path.join('/')}${request.nextUrl.search}`
 
   const headers: Record<string, string> = {
     'Content-Type': request.headers.get('content-type') || 'application/vnd.api+json',
@@ -101,11 +86,10 @@ async function proxyRequest(request: NextRequest, path: string[]) {
   }
 
   try {
-    const response = await nodeFetch(targetUrl, {
+    const response = await fetchKeygen(targetUrl, {
       method: request.method,
       headers,
-      body: body || undefined,
-      agent: targetUrl.startsWith('https') ? httpsAgent : undefined,
+      body,
     })
 
     const data = await response.text()

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
+import { KEYGEN_BASE_URL, getAccountPathPrefix, fetchKeygen } from '@/lib/server/keygen-fetch'
 
 // Server-side /me endpoint that reads the token from the httpOnly cookie
 // and proxies the request to the Keygen API, so the token never touches the client.
@@ -14,16 +15,9 @@ export async function GET() {
     )
   }
 
-  const apiUrl = process.env.NEXT_PUBLIC_KEYGEN_API_URL
-  if (!apiUrl) {
-    return NextResponse.json(
-      { error: 'API not configured' },
-      { status: 500 }
-    )
-  }
-
   try {
-    const response = await fetch(`${apiUrl}/me`, {
+    const targetUrl = `${KEYGEN_BASE_URL}/v1${getAccountPathPrefix()}/me`
+    const response = await fetchKeygen(targetUrl, {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Accept': 'application/vnd.api+json',

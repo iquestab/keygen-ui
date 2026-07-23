@@ -49,7 +49,21 @@ import {
 import { toast } from 'sonner'
 import { handleLoadError, handleCrudError } from '@/lib/utils/error-handling'
 import { CreateUserDialog } from './create-user-dialog'
+import { EditUserDialog } from './edit-user-dialog'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import { PaginationControls } from '@/components/shared/pagination-controls'
+
+const DEFAULT_PAGE_SIZE = 25
+const SEARCH_DEBOUNCE_MS = 300
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedValue(value), delay)
+    return () => clearTimeout(timer)
+  }, [value, delay])
+  return debouncedValue
+}
 
 export function UserManagement() {
   const [users, setUsers] = useState<User[]>([])
@@ -62,34 +76,93 @@ export function UserManagement() {
   const [pendingUser, setPendingUser] = useState<User | null>(null)
   const [pendingAction, setPendingAction] = useState<'ban' | 'unban' | 'delete' | null>(null)
   const [confirmLoading, setConfirmLoading] = useState(false)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [userToEdit, setUserToEdit] = useState<User | null>(null)
 
-  const loadUsers = useCallback(async () => {
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE)
+  const [totalCount, setTotalCount] = useState(0)
+
+  // Search state
+  const [isSearchMode, setIsSearchMode] = useState(false)
+  const debouncedSearch = useDebounce(searchTerm, SEARCH_DEBOUNCE_MS)
+
+  const buildSearchQuery = useCallback((term: string) => {
+    const query: Record<string, string> = {}
+    if (term.length < 3) return query
+
+    query.name = term
+
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-/i
+    if (uuidPattern.test(term)) {
+      query.id = term
+    }
+
+    if (term.includes('@')) {
+      query.email = term
+    }
+
+    return query
+  }, [])
+
+  const loadData = useCallback(async () => {
     try {
       setLoading(true)
-      const response = await api.users.list({ limit: 50 })
-      setUsers(response.data || [])
+      const searchQuery = debouncedSearch ? buildSearchQuery(debouncedSearch) : null
+      const hasValidSearch = searchQuery && Object.keys(searchQuery).length > 0
+
+      if (hasValidSearch) {
+        setIsSearchMode(true)
+        const response = await api.search.search<User>({
+          type: 'users',
+          query: searchQuery,
+          op: 'OR',
+          page: { size: pageSize, number: currentPage },
+        })
+        setUsers(response.data || [])
+        setTotalCount(response.meta?.count ?? (response.data?.length || 0))
+      } else {
+        setIsSearchMode(false)
+        const response = await api.users.list({
+          page: { size: pageSize, number: currentPage },
+        })
+        setUsers(response.data || [])
+        setTotalCount(response.meta?.count ?? (response.data?.length || 0))
+      }
     } catch (error: unknown) {
       handleLoadError(error, 'users')
     } finally {
       setLoading(false)
     }
-  }, [api.users])
+  }, [api.users, api.search, pageSize, currentPage, debouncedSearch, buildSearchQuery])
 
   useEffect(() => {
-    loadUsers()
-  }, [loadUsers])
+    loadData()
+  }, [loadData])
 
+  // After creating a user, jump to page 1 — newly created records are returned
+  // first (reverse-chronological order), so this is where the new user will be.
+  // If we're already on page 1, the page-number state won't change, so force a
+  // reload explicitly instead of relying on the effect above.
+  const handleUserCreated = useCallback(() => {
+    if (currentPage !== 1) {
+      setCurrentPage(1)
+    } else {
+      loadData()
+    }
+  }, [currentPage, loadData])
+
+  // Reset to page 1 when filters or search change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [statusFilter, pageSize, debouncedSearch])
+
+  // Status filter applied client-side on top of the properly paginated page
   const filteredUsers = users.filter(user => {
-    const matchesSearch = !searchTerm || 
-      user.attributes.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.attributes.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.attributes.lastName?.toLowerCase().includes(searchTerm.toLowerCase())
-    
-    const matchesStatus = statusFilter === 'all' || 
+    return statusFilter === 'all' ||
       (statusFilter === 'active' && !user.attributes.banned) ||
       (statusFilter === 'banned' && user.attributes.banned)
-    
-    return matchesSearch && matchesStatus
   })
 
   const getStatusColor = (banned: boolean) => {
@@ -124,6 +197,11 @@ export function UserManagement() {
     setConfirmDeleteOpen(true)
   }
 
+  const handleEditUser = (user: User) => {
+    setUserToEdit(user)
+    setEditDialogOpen(true)
+  }
+
   const executePendingAction = async () => {
     if (!pendingUser || !pendingAction) return
     setConfirmLoading(true)
@@ -138,7 +216,7 @@ export function UserManagement() {
         await api.users.delete(pendingUser.id)
         toast.success('User deleted successfully')
       }
-      await loadUsers()
+      await loadData()
       setConfirmBanOpen(false)
       setConfirmDeleteOpen(false)
       setPendingUser(null)
@@ -181,7 +259,7 @@ export function UserManagement() {
             Manage user accounts and permissions
           </p>
         </div>
-        <CreateUserDialog onUserCreated={loadUsers} />
+        <CreateUserDialog onUserCreated={handleUserCreated} />
       </div>
 
       {/* Stats Cards */}
@@ -192,9 +270,9 @@ export function UserManagement() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{users.length}</div>
+            <div className="text-2xl font-bold">{totalCount}</div>
             <p className="text-xs text-muted-foreground">
-              Registered users
+              {isSearchMode ? 'Matching search' : 'Registered users'}
             </p>
           </CardContent>
         </Card>
@@ -354,7 +432,7 @@ export function UserManagement() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleEditUser(user)}>
                             <Edit className="mr-2 h-4 w-4" />
                             Edit User
                           </DropdownMenuItem>
@@ -387,7 +465,17 @@ export function UserManagement() {
               </TableBody>
             </Table>
           )}
-          
+
+          {!loading && (
+            <PaginationControls
+              currentPage={currentPage}
+              pageSize={pageSize}
+              totalCount={totalCount}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+            />
+          )}
+
           {!loading && filteredUsers.length === 0 && (
             <div className="flex items-center justify-center h-32">
               <div className="text-center">
@@ -425,6 +513,14 @@ export function UserManagement() {
         destructive
         loading={confirmLoading}
         onConfirm={executePendingAction}
+      />
+
+      {/* Edit Dialog */}
+      <EditUserDialog
+        user={userToEdit}
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        onUserUpdated={loadData}
       />
     </div>
   )

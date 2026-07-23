@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { HelpCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { handleFormError } from '@/lib/utils/error-handling'
 
@@ -48,19 +50,21 @@ export function CreateEntitlementDialog({
         name: formData.name.trim(),
         code: formData.code.trim()
       })
-      
-      // Reset form
-      setFormData({
-        name: '',
-        code: ''
-      })
-      
+
+      resetForm()
       onEntitlementCreated()
     } catch (error: unknown) {
       handleFormError(error, 'Entitlement')
     } finally {
       setLoading(false)
     }
+  }
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      code: ''
+    })
   }
 
   const handleInputChange = (field: string, value: string) => {
@@ -99,7 +103,15 @@ export function CreateEntitlementDialog({
           
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="name">Entitlement Name *</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="name">Entitlement Name *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>A human-readable label for this feature/entitlement, shown throughout the dashboard</TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="name"
                 value={formData.name}
@@ -111,7 +123,15 @@ export function CreateEntitlementDialog({
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="code">Entitlement Code *</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="code">Entitlement Code *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>A unique, machine-readable identifier used to check for this entitlement in code (e.g. via the SDK)</TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="code"
                 value={formData.code}
@@ -131,7 +151,7 @@ export function CreateEntitlementDialog({
             <Button
               type="button"
               variant="outline"
-              onClick={() => onOpenChange(false)}
+              onClick={() => { onOpenChange(false); resetForm() }}
               disabled={loading}
             >
               Cancel

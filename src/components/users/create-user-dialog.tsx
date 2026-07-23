@@ -21,7 +21,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { Plus, Shield, User } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Plus, Shield, User, HelpCircle } from 'lucide-react'
 import { getKeygenApi } from '@/lib/api'
 import { toast } from 'sonner'
 import { handleFormError } from '@/lib/utils/error-handling'
@@ -135,7 +136,15 @@ export function CreateUserDialog({ onUserCreated }: CreateUserDialogProps) {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email *</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="email">Email *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Used to sign in and for account notifications — must be unique</TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="email"
                 type="email"
@@ -146,7 +155,15 @@ export function CreateUserDialog({ onUserCreated }: CreateUserDialogProps) {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="role">Role</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="role">Role</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Controls what this user can access and manage in your Keygen account</TooltipContent>
+                </Tooltip>
+              </div>
               <Select
                 value={formData.role}
                 onValueChange={(value: typeof formData.role) => setFormData({ ...formData, role: value })}
@@ -199,7 +216,15 @@ export function CreateUserDialog({ onUserCreated }: CreateUserDialogProps) {
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="firstName">First Name</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="firstName">First Name</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Optional — shown alongside the user&apos;s email throughout the dashboard</TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="firstName"
                 placeholder="John"
@@ -208,7 +233,15 @@ export function CreateUserDialog({ onUserCreated }: CreateUserDialogProps) {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="lastName">Last Name</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="lastName">Last Name</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Optional — shown alongside the user&apos;s email throughout the dashboard</TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="lastName"
                 placeholder="Doe"
@@ -220,7 +253,15 @@ export function CreateUserDialog({ onUserCreated }: CreateUserDialogProps) {
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="password">Password *</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="password">Password *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>The password this user will sign in with — must be at least 8 characters</TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="password"
                 type="password"
@@ -231,7 +272,15 @@ export function CreateUserDialog({ onUserCreated }: CreateUserDialogProps) {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm Password *</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="confirmPassword">Confirm Password *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Re-enter the same password to confirm it was typed correctly</TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="confirmPassword"
                 type="password"
@@ -244,7 +293,15 @@ export function CreateUserDialog({ onUserCreated }: CreateUserDialogProps) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="metadata">Metadata (JSON)</Label>
+            <div className="flex items-center gap-1">
+              <Label htmlFor="metadata">Metadata (JSON)</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="size-3.5 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent>Freeform JSON object for your own custom tracking data</TooltipContent>
+              </Tooltip>
+            </div>
             <Textarea
               id="metadata"
               placeholder='{&quot;department&quot;: &quot;Engineering&quot;, &quot;location&quot;: &quot;Remote&quot;}'

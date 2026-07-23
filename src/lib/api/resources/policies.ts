@@ -1,5 +1,9 @@
 import { KeygenClient } from '../client';
-import { Policy, KeygenResponse, ListOptions, KeygenListResponse } from '../../types/keygen';
+import { Policy, KeygenResponse, PaginationOptions, KeygenListResponse } from '../../types/keygen';
+
+export interface PolicyFilters extends PaginationOptions {
+  name?: string;
+}
 
 export class PolicyResource {
   constructor(private client: KeygenClient) {}
@@ -7,16 +11,14 @@ export class PolicyResource {
   /**
    * List all policies
    */
-  async list(options?: ListOptions): Promise<KeygenListResponse<Policy>> {
-    const queryParams = new URLSearchParams();
-    
-    if (options?.limit) queryParams.set('limit', options.limit.toString());
-    if (options?.page) queryParams.set('page', options.page.toString());
-    
-    const query = queryParams.toString();
-    const endpoint = query ? `/policies?${query}` : '/policies';
-    
-    return this.client.request<Policy[]>(endpoint);
+  async list(filters: PolicyFilters = {}): Promise<KeygenListResponse<Policy>> {
+    const params = {
+      ...this.client.buildPaginationParams(filters),
+    };
+
+    if (filters.name) params.name = filters.name;
+
+    return this.client.request<Policy[]>('/policies', { params });
   }
 
   /**
