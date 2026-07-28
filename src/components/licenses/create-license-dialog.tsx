@@ -32,6 +32,14 @@ import { Entitlement, Group, Policy, User } from '@/lib/types/keygen'
 import { handleFormError, handleLoadError } from '@/lib/utils/error-handling'
 import { toast } from 'sonner'
 
+const SCHEME_LABELS: Record<string, string> = {
+  ED25519_SIGN: 'Ed25519 Signature',
+  RSA_2048_PKCS1_SIGN: 'RSA-2048 PKCS1 Signature',
+  RSA_2048_PKCS1_PSS_SIGN: 'RSA-2048 PKCS1 PSS Signature',
+  RSA_2048_PKCS1_ENCRYPT: 'RSA-2048 PKCS1 Encrypt',
+  RSA_2048_JWT_RS256: 'RSA-2048 JWT (RS256)',
+}
+
 interface CreateLicenseDialogProps {
   onLicenseCreated?: () => void
 }
@@ -181,7 +189,7 @@ export function CreateLicenseDialog({ onLicenseCreated }: CreateLicenseDialogPro
           Create License
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[720px]">
+      <DialogContent className="sm:max-w-[720px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>New License</DialogTitle>
           <DialogDescription>
@@ -418,6 +426,17 @@ export function CreateLicenseDialog({ onLicenseCreated }: CreateLicenseDialogPro
                       ))}
                     </SelectContent>
                   </Select>
+                  {formData.policyId && (() => {
+                    const selectedPolicy = policies.find((p) => p.id === formData.policyId)
+                    const scheme = selectedPolicy?.attributes.scheme
+                    return (
+                      <p className="text-xs text-muted-foreground">
+                        {scheme
+                          ? `Offline-capable — signed with ${SCHEME_LABELS[scheme] || scheme}`
+                          : 'No signing scheme — this license cannot be checked out as an offline license file'}
+                      </p>
+                    )
+                  })()}
                 </div>
 
                 <div className="space-y-2">

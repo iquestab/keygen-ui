@@ -61,6 +61,7 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
     machineLeasingStrategy: 'PER_LICENSE' as 'PER_LICENSE' | 'PER_USER' | 'ALWAYS_ALLOW',
     processLeasingStrategy: 'PER_MACHINE' as 'PER_MACHINE' | 'PER_LICENSE' | 'PER_USER' | 'ALWAYS_ALLOW',
     overageStrategy: 'NO_OVERAGE' as 'NO_OVERAGE' | 'ALWAYS_ALLOW_OVERAGE' | 'ALLOW_1_25X_OVERAGE' | 'ALLOW_1_5X_OVERAGE' | 'ALLOW_2X_OVERAGE',
+    scheme: 'NONE' as 'NONE' | 'ED25519_SIGN' | 'RSA_2048_PKCS1_SIGN' | 'RSA_2048_PKCS1_PSS_SIGN' | 'RSA_2048_PKCS1_ENCRYPT' | 'RSA_2048_JWT_RS256',
     metadata: ''
   })
 
@@ -182,6 +183,12 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
         policyData.processLeasingStrategy = formData.processLeasingStrategy
       }
 
+      // Signing scheme is immutable after creation, so only send it if the user
+      // actually picked one — 'NONE' means "don't send", not "explicitly no scheme".
+      if (formData.scheme !== 'NONE') {
+        policyData.scheme = formData.scheme
+      }
+
       // Add metadata if provided
       if (formData.metadata && formData.metadata.trim()) {
         try {
@@ -227,6 +234,7 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
       machineLeasingStrategy: 'PER_LICENSE',
       processLeasingStrategy: 'PER_MACHINE',
       overageStrategy: 'NO_OVERAGE',
+      scheme: 'NONE',
       metadata: ''
     })
     setTouchedStrategies({
@@ -379,6 +387,46 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
                   <TooltipContent>Prevent licenses under this policy from being modified via the API once created</TooltipContent>
                 </Tooltip>
               </div>
+            </div>
+          </div>
+
+          {/* Offline Licensing */}
+          <div className="space-y-4">
+            <h4 className="text-sm font-medium">Offline Licensing</h4>
+            <div className="space-y-2">
+              <div className="flex items-center gap-1">
+                <Label htmlFor="scheme">Cryptographic Scheme</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Required to check out signed license files for air-gapped/offline verification. Cannot be changed after the policy is created.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Select
+                value={formData.scheme}
+                onValueChange={(value: 'NONE' | 'ED25519_SIGN' | 'RSA_2048_PKCS1_SIGN' | 'RSA_2048_PKCS1_PSS_SIGN' | 'RSA_2048_PKCS1_ENCRYPT' | 'RSA_2048_JWT_RS256') =>
+                  setFormData({ ...formData, scheme: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NONE">None (online validation only)</SelectItem>
+                  <SelectItem value="ED25519_SIGN">Ed25519 Signature</SelectItem>
+                  <SelectItem value="RSA_2048_PKCS1_SIGN">RSA-2048 PKCS1 Signature</SelectItem>
+                  <SelectItem value="RSA_2048_PKCS1_PSS_SIGN">RSA-2048 PKCS1 PSS Signature</SelectItem>
+                  <SelectItem value="RSA_2048_PKCS1_ENCRYPT">RSA-2048 PKCS1 Encrypt</SelectItem>
+                  <SelectItem value="RSA_2048_JWT_RS256">RSA-2048 JWT (RS256)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Licenses under this policy will be signed with this key, allowing you to check out a
+                &quot;.lic&quot; file that can be verified offline, without calling the API.
+              </p>
             </div>
           </div>
 

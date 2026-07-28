@@ -54,6 +54,9 @@ export class PolicyResource {
     machineLeasingStrategy?: 'PER_LICENSE' | 'PER_USER' | 'ALWAYS_ALLOW';
     processLeasingStrategy?: 'PER_MACHINE' | 'PER_LICENSE' | 'PER_USER' | 'ALWAYS_ALLOW';
     overageStrategy?: 'NO_OVERAGE' | 'ALWAYS_ALLOW_OVERAGE' | 'ALLOW_1_25X_OVERAGE' | 'ALLOW_1_5X_OVERAGE' | 'ALLOW_2X_OVERAGE';
+    // Cryptographic signing scheme used for offline license/machine files. Immutable
+    // after creation, so this is only accepted here — not in update().
+    scheme?: 'ED25519_SIGN' | 'RSA_2048_PKCS1_ENCRYPT' | 'RSA_2048_PKCS1_SIGN' | 'RSA_2048_PKCS1_PSS_SIGN' | 'RSA_2048_JWT_RS256';
     metadata?: Record<string, unknown>;
   }): Promise<KeygenResponse<Policy>> {
     const { productId, ...attributes } = data;

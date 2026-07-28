@@ -22,6 +22,12 @@ function getStatusColor(status: string) {
   }
 }
 
+// The API returns status in uppercase (e.g. "EXPIRED") — format for display.
+function formatStatus(status: string) {
+  const lower = status.toLowerCase()
+  return lower.charAt(0).toUpperCase() + lower.slice(1)
+}
+
 function formatDate(dateString: string) {
   return new Date(dateString).toLocaleDateString('en-US', {
     year: 'numeric',
@@ -105,7 +111,7 @@ export function RecentLicensesTable() {
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline" className={getStatusColor(license.attributes.status)}>
-                      {license.attributes.status}
+                      {formatStatus(license.attributes.status)}
                     </Badge>
                   </TableCell>
                   <TableCell>

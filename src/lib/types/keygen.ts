@@ -116,6 +116,8 @@ export interface License extends KeygenResource {
     metadata?: Record<string, unknown>;
     created: string;
     updated: string;
+    // Only present in the response of a license check-out (offline license file) action
+    certificate?: string;
   };
 }
 
@@ -194,6 +196,7 @@ export interface Policy extends KeygenResource {
     machineLeasingStrategy: 'PER_MACHINE' | 'PER_USER' | 'ALL_MACHINES';
     processLeasingStrategy: 'PER_MACHINE' | 'PER_LICENSE' | 'ALL_PROCESSES';
     overageStrategy: 'NO_OVERAGE' | 'ALLOW_1_25X_OVERAGE' | 'ALLOW_1_5X_OVERAGE' | 'ALLOW_2X_OVERAGE' | 'ALWAYS_ALLOW_OVERAGE';
+    scheme: 'ED25519_SIGN' | 'RSA_2048_PKCS1_ENCRYPT' | 'RSA_2048_PKCS1_SIGN' | 'RSA_2048_PKCS1_PSS_SIGN' | 'RSA_2048_JWT_RS256' | null;
     metadata: Record<string, unknown>;
     created: string;
     updated: string;
@@ -349,6 +352,7 @@ export interface MachineFilters extends PaginationOptions {
 export interface UserFilters extends PaginationOptions {
   email?: string;
   role?: User['attributes']['role'];
+  roles?: User['attributes']['role'][];
   status?: User['attributes']['status'];
 }
 

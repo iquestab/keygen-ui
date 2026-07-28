@@ -59,7 +59,16 @@ export class KeygenClient {
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
-          if (typeof value === 'object') {
+          if (Array.isArray(value)) {
+            // Rack/Rails array convention: repeat the key with empty brackets
+            // (e.g. roles[]=admin&roles[]=user) — a bare repeated key without
+            // brackets gets collapsed to the last value by this API.
+            value.forEach((item) => {
+              if (item !== undefined && item !== null) {
+                searchParams.append(`${key}[]`, String(item));
+              }
+            });
+          } else if (typeof value === 'object') {
             // Handle nested objects like page[size], date[start], etc.
             Object.entries(value).forEach(([nestedKey, nestedValue]) => {
               if (nestedValue !== undefined && nestedValue !== null) {

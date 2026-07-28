@@ -44,7 +44,8 @@ import {
   Trash2,
   Edit,
   Copy,
-  Download,
+  FileDown,
+  Monitor,
   X,
   Loader2,
 } from 'lucide-react'
@@ -53,6 +54,8 @@ import { handleLoadError, handleCrudError } from '@/lib/utils/error-handling'
 import { CreateLicenseDialog } from './create-license-dialog'
 import { DeleteLicenseDialog } from './delete-license-dialog'
 import { EditLicenseDialog } from './edit-license-dialog'
+import { CheckoutLicenseDialog } from './checkout-license-dialog'
+import { LicenseDetailsDialog } from './license-details-dialog'
 import { PaginationControls } from '@/components/shared/pagination-controls'
 
 const DEFAULT_PAGE_SIZE = 25
@@ -74,6 +77,8 @@ export function LicenseManagement() {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false)
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false)
   const [selectedLicense, setSelectedLicense] = useState<License | null>(null)
 
   // Pagination state
@@ -211,6 +216,13 @@ export function LicenseManagement() {
     }
   }
 
+  // The API returns status in uppercase (e.g. "EXPIRED"), but comparisons and
+  // display throughout this app assume lowercase — normalize once at the source.
+  const formatStatus = (status: string) => {
+    const lower = status.toLowerCase()
+    return lower.charAt(0).toUpperCase() + lower.slice(1)
+  }
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -264,6 +276,16 @@ export function LicenseManagement() {
     setEditDialogOpen(true)
   }
 
+  const handleCheckoutLicense = (license: License) => {
+    setSelectedLicense(license)
+    setCheckoutDialogOpen(true)
+  }
+
+  const handleViewMachines = (license: License) => {
+    setSelectedLicense(license)
+    setDetailsDialogOpen(true)
+  }
+
   const handleGenerateToken = async (license: License) => {
     try {
       const response = await api.licenses.generateActivationToken(license.id)
@@ -286,8 +308,8 @@ export function LicenseManagement() {
   }
 
   // Stats from currently loaded page
-  const activeCount = licenses.filter(l => l.attributes.status === 'active').length
-  const expiredCount = licenses.filter(l => l.attributes.status === 'expired').length
+  const activeCount = licenses.filter(l => l.attributes.status.toLowerCase() === 'active').length
+  const expiredCount = licenses.filter(l => l.attributes.status.toLowerCase() === 'expired').length
   const totalUsage = licenses.reduce((acc, l) => acc + (l.attributes.uses || 0), 0)
 
   return (
@@ -339,12 +361,12 @@ export function LicenseManagement() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Usage</CardTitle>
+            <CardTitle className="text-sm font-medium">Metered Usage</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalUsage}</div>
-            <p className="text-xs text-muted-foreground">Total activations</p>
+            <p className="text-xs text-muted-foreground">Consumed via increment-usage</p>
           </CardContent>
         </Card>
       </div>
@@ -476,7 +498,7 @@ export function LicenseManagement() {
                         variant="outline"
                         className={getStatusColor(license.attributes.status)}
                       >
-                        {license.attributes.status}
+                        {formatStatus(license.attributes.status)}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -510,11 +532,19 @@ export function LicenseManagement() {
                             <Edit className="mr-2 h-4 w-4" />
                             Edit License
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleViewMachines(license)}>
+                            <Monitor className="mr-2 h-4 w-4" />
+                            View Machines
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleGenerateToken(license)}>
-                            <Download className="mr-2 h-4 w-4" />
+                            <Copy className="mr-2 h-4 w-4" />
                             Generate Token
                           </DropdownMenuItem>
-                          {license.attributes.status === 'active' ? (
+                          <DropdownMenuItem onClick={() => handleCheckoutLicense(license)}>
+                            <FileDown className="mr-2 h-4 w-4" />
+                            Download License File
+                          </DropdownMenuItem>
+                          {license.attributes.status.toLowerCase() === 'active' ? (
                             <DropdownMenuItem
                               onClick={() => handleSuspendLicense(license)}
                             >
@@ -529,7 +559,7 @@ export function LicenseManagement() {
                               Reinstate
                             </DropdownMenuItem>
                           )}
-                          {license.attributes.status === 'expired' && (
+                          {license.attributes.status.toLowerCase() === 'expired' && (
                             <DropdownMenuItem
                               onClick={() => handleRenewLicense(license)}
                             >
@@ -601,6 +631,24 @@ export function LicenseManagement() {
           open={editDialogOpen}
           onOpenChange={setEditDialogOpen}
           onLicenseUpdated={handleRefresh}
+        />
+      )}
+
+      {/* Checkout (License File) Dialog */}
+      {selectedLicense && (
+        <CheckoutLicenseDialog
+          license={selectedLicense}
+          open={checkoutDialogOpen}
+          onOpenChange={setCheckoutDialogOpen}
+        />
+      )}
+
+      {/* Details (Machines) Dialog */}
+      {selectedLicense && (
+        <LicenseDetailsDialog
+          license={selectedLicense}
+          open={detailsDialogOpen}
+          onOpenChange={setDetailsDialogOpen}
         />
       )}
     </div>

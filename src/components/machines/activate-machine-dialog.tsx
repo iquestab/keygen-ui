@@ -56,8 +56,8 @@ export function ActivateMachineDialog({ onMachineActivated }: ActivateMachineDia
         limit: 100,
         // Only get active licenses
       })
-      setLicenses(licensesResponse.data?.filter(license => 
-        license.attributes.status === 'active'
+      setLicenses(licensesResponse.data?.filter(license =>
+        license.attributes.status.toLowerCase() === 'active'
       ) || [])
     } catch (error: unknown) {
       handleLoadError(error, 'licenses')
@@ -125,7 +125,7 @@ export function ActivateMachineDialog({ onMachineActivated }: ActivateMachineDia
           Activate Machine
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[525px]">
+      <DialogContent className="sm:max-w-[525px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Activate New Machine</DialogTitle>
           <DialogDescription>

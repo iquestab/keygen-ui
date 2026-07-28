@@ -314,4 +314,33 @@ export class LicenseResource {
       body,
     });
   }
+
+  /**
+   * Check out a signed (and optionally encrypted) offline license file.
+   * Requires the license's policy to have a cryptographic scheme configured.
+   *
+   * `ttl` is optional — Keygen defaults to a 1-month TTL if omitted. Pass `null`
+   * explicitly for a perpetual/irrevocable file with no expiry (Keygen advises
+   * against this: without a TTL, later changes — expiry, suspension, metadata —
+   * are never guaranteed to reach the offline install, since no re-checkout is
+   * ever required). Sent as the literal query string `ttl=null`, the standard
+   * convention for this Rails/JSON:API-style backend — unverified against a
+   * worked example in Keygen's docs, so double check the checked-out file's
+   * expiry comes back empty before relying on it.
+   */
+  async checkOut(id: string, options: { ttl?: number | null; encrypt?: boolean; include?: string[] } = {}): Promise<KeygenResponse<License>> {
+    const params: Record<string, unknown> = {};
+    if (options.ttl === null) {
+      params.ttl = 'null';
+    } else if (options.ttl) {
+      params.ttl = options.ttl;
+    }
+    if (options.encrypt) params.encrypt = true;
+    if (options.include && options.include.length > 0) params.include = options.include.join(',');
+
+    return this.client.request<License>(`licenses/${id}/actions/check-out`, {
+      method: 'POST',
+      params,
+    });
+  }
 }

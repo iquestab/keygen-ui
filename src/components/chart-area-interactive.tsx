@@ -37,8 +37,8 @@ export const description = "New licenses and machines over time"
 // building the daily counts below. There's no dedicated analytics/time-series
 // endpoint, so this bucket-by-day approach is bounded to the last N records
 // rather than being a fully accurate count for accounts with heavy activity
-// beyond this window.
-const RECENT_RECORDS_LIMIT = 200
+// beyond this window. Capped at 100 — the API's documented max page size.
+const RECENT_RECORDS_LIMIT = 100
 const DAYS_TO_SHOW = 90
 
 interface DailyCounts {

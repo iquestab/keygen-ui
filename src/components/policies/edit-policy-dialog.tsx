@@ -28,6 +28,14 @@ import { toast } from 'sonner'
 import { Policy } from '@/lib/types/keygen'
 import { handleCrudError } from '@/lib/utils/error-handling'
 
+const SCHEME_LABELS: Record<string, string> = {
+  ED25519_SIGN: 'Ed25519 Signature',
+  RSA_2048_PKCS1_SIGN: 'RSA-2048 PKCS1 Signature',
+  RSA_2048_PKCS1_PSS_SIGN: 'RSA-2048 PKCS1 PSS Signature',
+  RSA_2048_PKCS1_ENCRYPT: 'RSA-2048 PKCS1 Encrypt',
+  RSA_2048_JWT_RS256: 'RSA-2048 JWT (RS256)',
+}
+
 interface EditPolicyDialogProps {
   policy: Policy | null
   open: boolean
@@ -325,6 +333,29 @@ export function EditPolicyDialog({
                   <TooltipContent>Prevent licenses under this policy from being modified via the API once created</TooltipContent>
                 </Tooltip>
               </div>
+            </div>
+          </div>
+
+          {/* Offline Licensing */}
+          <div className="space-y-4">
+            <h4 className="text-sm font-medium">Offline Licensing</h4>
+            <div className="space-y-2">
+              <div className="flex items-center gap-1">
+                <Label>Cryptographic Scheme</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    The signing scheme is set at policy creation and cannot be changed afterwards.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {policy.attributes.scheme
+                  ? SCHEME_LABELS[policy.attributes.scheme] || policy.attributes.scheme
+                  : 'None — licenses under this policy cannot be checked out as offline license files'}
+              </p>
             </div>
           </div>
 

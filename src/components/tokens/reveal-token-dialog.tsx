@@ -27,7 +27,7 @@ export function RevealTokenDialog({ open, onOpenChange, token }: RevealTokenDial
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[550px]">
+      <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Your new API key</DialogTitle>
           <DialogDescription>

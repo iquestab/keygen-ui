@@ -1,6 +1,18 @@
 import { KeygenClient } from '../client';
 import { User, UserFilters, KeygenResponse, KeygenListResponse } from '@/lib/types/keygen';
 
+// Per Keygen's API docs, GET /users defaults to only the `user` role unless a
+// `roles[]` filter says otherwise — admin/developer/etc. accounts are silently
+// excluded. We want "list users" to mean everyone unless the caller filters.
+const ALL_USER_ROLES: NonNullable<User['attributes']['role']>[] = [
+  'user',
+  'admin',
+  'developer',
+  'sales-agent',
+  'support-agent',
+  'read-only',
+];
+
 export class UserResource {
   constructor(private client: KeygenClient) {}
 
@@ -14,7 +26,7 @@ export class UserResource {
 
     // Add filter parameters
     if (filters.email) params.email = filters.email;
-    if (filters.role) params.role = filters.role;
+    params.roles = filters.roles ?? (filters.role ? [filters.role] : ALL_USER_ROLES);
     if (filters.status) params.status = filters.status;
 
     return this.client.request<User[]>('users', { params });

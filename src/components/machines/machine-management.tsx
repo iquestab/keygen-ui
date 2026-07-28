@@ -159,20 +159,27 @@ export function MachineManagement() {
     }
   }, [currentPage, loadData])
 
+  // The API returns heartbeatStatus as e.g. "ALIVE" / "NOT_STARTED" — uppercase
+  // with underscores — while the rest of this file assumes the lowercase,
+  // hyphenated form the TS type declares. Normalize once at the source.
+  const normalizeHeartbeatStatus = (heartbeatStatus: string) =>
+    heartbeatStatus?.toLowerCase().replace(/_/g, '-') ?? ''
+
   // Client-side heartbeat status filter — applied only to the currently
   // loaded page, since heartbeatStatus is not a confirmed server-searchable
   // field. This is on top of the properly paginated `machines` state.
   const filteredMachines = machines.filter(machine => {
+    const status = normalizeHeartbeatStatus(machine.attributes.heartbeatStatus)
     const matchesStatus = statusFilter === 'all' ||
-      (statusFilter === 'active' && machine.attributes.heartbeatStatus === 'alive') ||
-      (statusFilter === 'inactive' && machine.attributes.heartbeatStatus === 'dead') ||
-      (statusFilter === 'not-started' && machine.attributes.heartbeatStatus === 'not-started')
+      (statusFilter === 'active' && status === 'alive') ||
+      (statusFilter === 'inactive' && status === 'dead') ||
+      (statusFilter === 'not-started' && status === 'not-started')
 
     return matchesStatus
   })
 
   const getStatusColor = (heartbeatStatus: string) => {
-    switch (heartbeatStatus) {
+    switch (normalizeHeartbeatStatus(heartbeatStatus)) {
       case 'alive': return 'bg-green-100 text-green-800 border-green-200'
       case 'dead': return 'bg-red-100 text-red-800 border-red-200'
       case 'not-started': return 'bg-gray-100 text-gray-800 border-gray-200'
@@ -181,7 +188,7 @@ export function MachineManagement() {
   }
 
   const getStatusIcon = (heartbeatStatus: string) => {
-    switch (heartbeatStatus) {
+    switch (normalizeHeartbeatStatus(heartbeatStatus)) {
       case 'alive': return <CheckCircle className="h-3 w-3" />
       case 'dead': return <AlertCircle className="h-3 w-3" />
       case 'not-started': return <Activity className="h-3 w-3" />
@@ -266,7 +273,7 @@ export function MachineManagement() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {machines.filter(m => m.attributes.heartbeatStatus === 'alive').length}
+              {machines.filter(m => normalizeHeartbeatStatus(m.attributes.heartbeatStatus) === 'alive').length}
             </div>
             <p className="text-xs text-muted-foreground">
               On current page
@@ -280,7 +287,7 @@ export function MachineManagement() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {machines.filter(m => m.attributes.heartbeatStatus === 'dead').length}
+              {machines.filter(m => normalizeHeartbeatStatus(m.attributes.heartbeatStatus) === 'dead').length}
             </div>
             <p className="text-xs text-muted-foreground">
               Offline machines
@@ -294,7 +301,7 @@ export function MachineManagement() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {machines.filter(m => m.attributes.heartbeatStatus === 'not-started').length}
+              {machines.filter(m => normalizeHeartbeatStatus(m.attributes.heartbeatStatus) === 'not-started').length}
             </div>
             <p className="text-xs text-muted-foreground">
               Never activated

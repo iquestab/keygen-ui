@@ -151,7 +151,7 @@ export function EntitlementDetailsDialog({
                           {license.attributes.key}
                         </p>
                         <div className="flex items-center gap-2">
-                          <Badge variant={license.attributes.status === 'active' ? 'default' : 'secondary'}>
+                          <Badge variant={license.attributes.status.toLowerCase() === 'active' ? 'default' : 'secondary'}>
                             {license.attributes.status}
                           </Badge>
                           {license.attributes.uses !== undefined && (
