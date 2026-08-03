@@ -19,6 +19,7 @@ import { getKeygenApi } from '@/lib/api'
 import { toast } from 'sonner'
 import { License } from '@/lib/types/keygen'
 import { handleCrudError } from '@/lib/utils/error-handling'
+import { EntitlementManager } from '@/components/shared/entitlement-manager'
 
 interface EditLicenseDialogProps {
   license: License
@@ -192,6 +193,24 @@ export function EditLicenseDialog({
             <p className="text-xs text-muted-foreground">
               Maximum number of times this license can be used
             </p>
+          </div>
+
+          {/* Entitlements */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-1">
+              <Label>Entitlements</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="size-3.5 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent>Additional entitlements this license has, beyond what it inherits from its policy</TooltipContent>
+              </Tooltip>
+            </div>
+            <EntitlementManager
+              resourceId={license.id}
+              resourceType="license"
+              emptyHint="No entitlements directly attached to this license"
+            />
           </div>
 
           {/* Metadata */}

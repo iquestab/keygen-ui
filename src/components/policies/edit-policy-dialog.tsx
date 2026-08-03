@@ -27,6 +27,7 @@ import { getKeygenApi } from '@/lib/api'
 import { toast } from 'sonner'
 import { Policy } from '@/lib/types/keygen'
 import { handleCrudError } from '@/lib/utils/error-handling'
+import { EntitlementManager } from '@/components/shared/entitlement-manager'
 
 const SCHEME_LABELS: Record<string, string> = {
   ED25519_SIGN: 'Ed25519 Signature',
@@ -753,6 +754,26 @@ export function EditPolicyDialog({
                 </Select>
               </div>
             </div>
+          </div>
+
+          {/* Entitlements */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-1">
+              <h4 className="text-sm font-medium">Entitlements</h4>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="size-3.5 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  Licenses under this policy automatically inherit all of its entitlements
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <EntitlementManager
+              resourceId={policy.id}
+              resourceType="policy"
+              emptyHint="No entitlements attached to this policy"
+            />
           </div>
 
           {/* Metadata */}

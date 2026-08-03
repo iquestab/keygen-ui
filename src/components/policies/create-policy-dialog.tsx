@@ -22,11 +22,12 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Plus, HelpCircle } from 'lucide-react'
 import { getKeygenApi } from '@/lib/api'
 import { toast } from 'sonner'
-import { Product } from '@/lib/types/keygen'
+import { Product, Entitlement } from '@/lib/types/keygen'
 import { handleFormError, handleLoadError } from '@/lib/utils/error-handling'
 import { useEffect, useCallback } from 'react'
 
@@ -84,6 +85,10 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
     heartbeatResurrectionStrategy: false,
   })
 
+  const [entitlements, setEntitlements] = useState<Entitlement[]>([])
+  const [entitlementSearch, setEntitlementSearch] = useState('')
+  const [selectedEntitlements, setSelectedEntitlements] = useState<string[]>([])
+
   const api = getKeygenApi()
 
   // Load products when dialog opens
@@ -99,11 +104,23 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
     }
   }, [api.products])
 
+  const loadEntitlements = useCallback(async () => {
+    try {
+      const response = await api.entitlements.list({ limit: 100 })
+      setEntitlements(response.data || [])
+    } catch (error: unknown) {
+      handleLoadError(error, 'entitlements', { silent: true })
+    }
+  }, [api.entitlements])
+
   useEffect(() => {
     if (open && products.length === 0) {
       loadProducts()
     }
-  }, [open, products.length, loadProducts])
+    if (open && entitlements.length === 0) {
+      loadEntitlements()
+    }
+  }, [open, products.length, loadProducts, entitlements.length, loadEntitlements])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -198,7 +215,12 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
         }
       }
 
-      await api.policies.create(policyData as { name: string; productId: string; duration?: number })
+      const response = await api.policies.create(policyData as { name: string; productId: string; duration?: number })
+
+      const createdId = response.data?.id
+      if (createdId && selectedEntitlements.length > 0) {
+        await api.policies.attachEntitlements(createdId, selectedEntitlements)
+      }
 
       toast.success('Policy created successfully')
       setOpen(false)
@@ -250,6 +272,8 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
       processLeasingStrategy: false,
       heartbeatResurrectionStrategy: false,
     })
+    setSelectedEntitlements([])
+    setEntitlementSearch('')
   }
 
   return (
@@ -823,6 +847,60 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+          </div>
+
+          {/* Entitlements */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-1">
+              <Label>Entitlements</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="size-3.5 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  Licenses under this policy will automatically inherit all selected entitlements
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <div className="rounded-md border">
+              <div className="p-2 border-b">
+                <Input
+                  placeholder="Search entitlements…"
+                  value={entitlementSearch}
+                  onChange={(e) => setEntitlementSearch(e.target.value)}
+                />
+              </div>
+              <ScrollArea className="h-32">
+                <div className="p-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {entitlements
+                    .filter((ent) => {
+                      const q = entitlementSearch.toLowerCase()
+                      const name = String(ent.attributes.name || '').toLowerCase()
+                      const code = String(ent.attributes.code || '').toLowerCase()
+                      return !q || name.includes(q) || code.includes(q) || ent.id.includes(q)
+                    })
+                    .map((ent) => (
+                      <label key={ent.id} className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={selectedEntitlements.includes(ent.id)}
+                          onCheckedChange={(v) =>
+                            setSelectedEntitlements((prev) =>
+                              v ? [...prev, ent.id] : prev.filter((id) => id !== ent.id)
+                            )
+                          }
+                        />
+                        <span>
+                          {ent.attributes.name}
+                          <span className="text-muted-foreground"> · {ent.attributes.code}</span>
+                        </span>
+                      </label>
+                    ))}
+                  {entitlements.length === 0 && (
+                    <div className="text-xs text-muted-foreground">No entitlements found</div>
+                  )}
+                </div>
+              </ScrollArea>
             </div>
           </div>
 

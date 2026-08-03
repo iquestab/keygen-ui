@@ -1,5 +1,5 @@
 import { KeygenClient } from '../client';
-import { License, LicenseFilters, KeygenResponse, KeygenListResponse } from '@/lib/types/keygen';
+import { License, LicenseFilters, Entitlement, KeygenResponse, KeygenListResponse } from '@/lib/types/keygen';
 
 export class LicenseResource {
   constructor(private client: KeygenClient) {}
@@ -228,8 +228,8 @@ export class LicenseResource {
   /**
    * Get license entitlements
    */
-  async getEntitlements(id: string): Promise<KeygenResponse<unknown[]>> {
-    return this.client.request(`licenses/${id}/entitlements`);
+  async getEntitlements(id: string): Promise<KeygenListResponse<Entitlement>> {
+    return this.client.request<Entitlement[]>(`licenses/${id}/entitlements`);
   }
 
   /**
@@ -243,7 +243,7 @@ export class LicenseResource {
       })),
     };
 
-    return this.client.request(`licenses/${id}/relationships/entitlements`, {
+    return this.client.request(`licenses/${id}/entitlements`, {
       method: 'POST',
       body,
     });
@@ -260,7 +260,7 @@ export class LicenseResource {
       })),
     };
 
-    await this.client.request(`licenses/${id}/relationships/entitlements`, {
+    await this.client.request(`licenses/${id}/entitlements`, {
       method: 'DELETE',
       body,
     });

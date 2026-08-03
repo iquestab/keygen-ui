@@ -327,6 +327,16 @@ export interface Release extends KeygenResource {
   };
 }
 
+// Constraint — links an entitlement to a release; a license/user must possess
+// every entitlement constrained on a release to download or upgrade to it.
+export interface Constraint extends KeygenResource {
+  type: 'constraints';
+  attributes: {
+    created: string;
+    updated: string;
+  };
+}
+
 // Artifact
 export interface Artifact extends KeygenResource {
   type: 'artifacts';

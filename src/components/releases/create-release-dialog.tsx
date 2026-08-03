@@ -14,6 +14,8 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Checkbox } from '@/components/ui/checkbox'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Select,
   SelectContent,
@@ -25,7 +27,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Plus, HelpCircle } from 'lucide-react'
 import { getKeygenApi } from '@/lib/api'
 import { toast } from 'sonner'
-import { Product, Package as PackageType } from '@/lib/types/keygen'
+import { Product, Package as PackageType, Entitlement } from '@/lib/types/keygen'
 import { handleFormError, handleLoadError } from '@/lib/utils/error-handling'
 
 interface CreateReleaseDialogProps {
@@ -40,6 +42,9 @@ export function CreateReleaseDialog({ products, onReleaseCreated }: CreateReleas
   const [loading, setLoading] = useState(false)
   const [packages, setPackages] = useState<PackageType[]>([])
   const [packagesLoading, setPackagesLoading] = useState(false)
+  const [entitlements, setEntitlements] = useState<Entitlement[]>([])
+  const [entitlementSearch, setEntitlementSearch] = useState('')
+  const [selectedEntitlements, setSelectedEntitlements] = useState<string[]>([])
   const [formData, setFormData] = useState({
     productId: '',
     packageId: 'none',
@@ -64,6 +69,21 @@ export function CreateReleaseDialog({ products, onReleaseCreated }: CreateReleas
     }
   }, [api.packages])
 
+  const loadEntitlements = useCallback(async () => {
+    try {
+      const response = await api.entitlements.list({ limit: 100 })
+      setEntitlements(response.data || [])
+    } catch (error: unknown) {
+      handleLoadError(error, 'entitlements', { silent: true })
+    }
+  }, [api.entitlements])
+
+  useEffect(() => {
+    if (open && entitlements.length === 0) {
+      loadEntitlements()
+    }
+  }, [open, entitlements.length, loadEntitlements])
+
   useEffect(() => {
     if (formData.productId) {
       setFormData(prev => ({ ...prev, packageId: 'none' }))
@@ -84,6 +104,8 @@ export function CreateReleaseDialog({ products, onReleaseCreated }: CreateReleas
       description: '',
     })
     setPackages([])
+    setSelectedEntitlements([])
+    setEntitlementSearch('')
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -102,7 +124,7 @@ export function CreateReleaseDialog({ products, onReleaseCreated }: CreateReleas
     try {
       setLoading(true)
 
-      await api.releases.create({
+      const response = await api.releases.create({
         version: formData.version.trim(),
         channel: formData.channel,
         name: formData.name.trim() || undefined,
@@ -111,6 +133,11 @@ export function CreateReleaseDialog({ products, onReleaseCreated }: CreateReleas
         productId: formData.productId,
         packageId: formData.packageId === 'none' ? undefined : formData.packageId,
       })
+
+      const createdId = response.data?.id
+      if (createdId && selectedEntitlements.length > 0) {
+        await api.releases.attachConstraints(createdId, selectedEntitlements)
+      }
 
       toast.success('Release created successfully')
       setOpen(false)
@@ -261,6 +288,59 @@ export function CreateReleaseDialog({ products, onReleaseCreated }: CreateReleas
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               rows={3}
             />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center gap-1">
+              <Label>Entitlement Constraints</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="size-3.5 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  A license or user must possess every selected entitlement to download or upgrade to this release
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <div className="rounded-md border">
+              <div className="p-2 border-b">
+                <Input
+                  placeholder="Search entitlements…"
+                  value={entitlementSearch}
+                  onChange={(e) => setEntitlementSearch(e.target.value)}
+                />
+              </div>
+              <ScrollArea className="h-32">
+                <div className="p-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {entitlements
+                    .filter((ent) => {
+                      const q = entitlementSearch.toLowerCase()
+                      const name = String(ent.attributes.name || '').toLowerCase()
+                      const code = String(ent.attributes.code || '').toLowerCase()
+                      return !q || name.includes(q) || code.includes(q) || ent.id.includes(q)
+                    })
+                    .map((ent) => (
+                      <label key={ent.id} className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={selectedEntitlements.includes(ent.id)}
+                          onCheckedChange={(v) =>
+                            setSelectedEntitlements((prev) =>
+                              v ? [...prev, ent.id] : prev.filter((id) => id !== ent.id)
+                            )
+                          }
+                        />
+                        <span>
+                          {ent.attributes.name}
+                          <span className="text-muted-foreground"> · {ent.attributes.code}</span>
+                        </span>
+                      </label>
+                    ))}
+                  {entitlements.length === 0 && (
+                    <div className="text-xs text-muted-foreground">No entitlements found</div>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
           </div>
 
           <DialogFooter>

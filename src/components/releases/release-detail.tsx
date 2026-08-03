@@ -19,6 +19,7 @@ import { ArrowLeft, Rocket, Ban, AlertTriangle } from 'lucide-react'
 import { handleLoadError, handleCrudError } from '@/lib/utils/error-handling'
 import { toast } from 'sonner'
 import { ReleaseStatusBadge } from './release-status-badge'
+import { ReleaseConstraints } from './release-constraints'
 import { ArtifactList } from '@/components/artifacts/artifact-list'
 
 interface ReleaseDetailProps {
@@ -154,6 +155,12 @@ export function ReleaseDetail({ releaseId }: ReleaseDetailProps) {
           <div className="text-xs text-muted-foreground">
             Created {formatDate(release.attributes.created)} · Updated {formatDate(release.attributes.updated)}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-6">
+          <ReleaseConstraints releaseId={release.id} />
         </CardContent>
       </Card>
 

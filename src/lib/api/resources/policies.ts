@@ -1,5 +1,5 @@
 import { KeygenClient } from '../client';
-import { Policy, KeygenResponse, PaginationOptions, KeygenListResponse } from '../../types/keygen';
+import { Policy, Entitlement, KeygenResponse, PaginationOptions, KeygenListResponse } from '../../types/keygen';
 
 export interface PolicyFilters extends PaginationOptions {
   name?: string;
@@ -131,8 +131,8 @@ export class PolicyResource {
   /**
    * List entitlements attached to a policy
    */
-  async getEntitlements(policyId: string): Promise<KeygenResponse<unknown[]>> {
-    return this.client.request(`/policies/${policyId}/entitlements`);
+  async getEntitlements(policyId: string): Promise<KeygenListResponse<Entitlement>> {
+    return this.client.request<Entitlement[]>(`/policies/${policyId}/entitlements`);
   }
 
   /**
