@@ -44,11 +44,8 @@ import {
   Trash2,
   Edit,
   Copy,
-  Download,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
+  FileDown,
+  Monitor,
   X,
   Loader2,
 } from 'lucide-react'
@@ -57,8 +54,10 @@ import { handleLoadError, handleCrudError } from '@/lib/utils/error-handling'
 import { CreateLicenseDialog } from './create-license-dialog'
 import { DeleteLicenseDialog } from './delete-license-dialog'
 import { EditLicenseDialog } from './edit-license-dialog'
+import { CheckoutLicenseDialog } from './checkout-license-dialog'
+import { LicenseDetailsDialog } from './license-details-dialog'
+import { PaginationControls } from '@/components/shared/pagination-controls'
 
-const PAGE_SIZES = [10, 25, 50, 100] as const
 const DEFAULT_PAGE_SIZE = 25
 const SEARCH_DEBOUNCE_MS = 300
 
@@ -78,6 +77,8 @@ export function LicenseManagement() {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false)
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false)
   const [selectedLicense, setSelectedLicense] = useState<License | null>(null)
 
   // Pagination state
@@ -185,14 +186,25 @@ export function LicenseManagement() {
   // Display data
   const displayLicenses = licenses
   const displayTotalCount = totalCount
-  const totalPages = Math.ceil(totalCount / pageSize)
 
   const isLoading = loading
 
-  // Refresh handler — used after CRUD operations
+  // Refresh handler — used after CRUD operations that should keep the current page
   const handleRefresh = useCallback(async () => {
     await loadData()
   }, [loadData])
+
+  // After creating a license, jump to page 1 — newly created records are returned
+  // first (reverse-chronological order), so this is where the new license will be.
+  // If we're already on page 1, the page-number state won't change, so force a
+  // reload explicitly instead of relying on the page-reset effect.
+  const handleLicenseCreated = useCallback(() => {
+    if (currentPage !== 1) {
+      setCurrentPage(1)
+    } else {
+      loadData()
+    }
+  }, [currentPage, loadData])
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
@@ -202,6 +214,13 @@ export function LicenseManagement() {
       case 'inactive': return 'bg-gray-100 text-gray-800 border-gray-200'
       default: return 'bg-gray-100 text-gray-800 border-gray-200'
     }
+  }
+
+  // The API returns status in uppercase (e.g. "EXPIRED"), but comparisons and
+  // display throughout this app assume lowercase — normalize once at the source.
+  const formatStatus = (status: string) => {
+    const lower = status.toLowerCase()
+    return lower.charAt(0).toUpperCase() + lower.slice(1)
   }
 
   const formatDate = (dateString: string) => {
@@ -257,6 +276,16 @@ export function LicenseManagement() {
     setEditDialogOpen(true)
   }
 
+  const handleCheckoutLicense = (license: License) => {
+    setSelectedLicense(license)
+    setCheckoutDialogOpen(true)
+  }
+
+  const handleViewMachines = (license: License) => {
+    setSelectedLicense(license)
+    setDetailsDialogOpen(true)
+  }
+
   const handleGenerateToken = async (license: License) => {
     try {
       const response = await api.licenses.generateActivationToken(license.id)
@@ -278,30 +307,9 @@ export function LicenseManagement() {
     searchInputRef.current?.focus()
   }
 
-  const goToPage = (page: number) => {
-    setCurrentPage(Math.max(1, Math.min(page, totalPages)))
-  }
-
-  // Generate page numbers to display
-  const getPageNumbers = () => {
-    const pages: (number | 'ellipsis')[] = []
-    if (totalPages <= 7) {
-      for (let i = 1; i <= totalPages; i++) pages.push(i)
-    } else {
-      pages.push(1)
-      if (currentPage > 3) pages.push('ellipsis')
-      const start = Math.max(2, currentPage - 1)
-      const end = Math.min(totalPages - 1, currentPage + 1)
-      for (let i = start; i <= end; i++) pages.push(i)
-      if (currentPage < totalPages - 2) pages.push('ellipsis')
-      pages.push(totalPages)
-    }
-    return pages
-  }
-
   // Stats from currently loaded page
-  const activeCount = licenses.filter(l => l.attributes.status === 'active').length
-  const expiredCount = licenses.filter(l => l.attributes.status === 'expired').length
+  const activeCount = licenses.filter(l => l.attributes.status.toLowerCase() === 'active').length
+  const expiredCount = licenses.filter(l => l.attributes.status.toLowerCase() === 'expired').length
   const totalUsage = licenses.reduce((acc, l) => acc + (l.attributes.uses || 0), 0)
 
   return (
@@ -314,7 +322,7 @@ export function LicenseManagement() {
             Manage and monitor your software licenses
           </p>
         </div>
-        <CreateLicenseDialog onLicenseCreated={handleRefresh} />
+        <CreateLicenseDialog onLicenseCreated={handleLicenseCreated} />
       </div>
 
       {/* Stats Cards */}
@@ -353,12 +361,12 @@ export function LicenseManagement() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Usage</CardTitle>
+            <CardTitle className="text-sm font-medium">Metered Usage</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalUsage}</div>
-            <p className="text-xs text-muted-foreground">Total activations</p>
+            <p className="text-xs text-muted-foreground">Consumed via increment-usage</p>
           </CardContent>
         </Card>
       </div>
@@ -490,7 +498,7 @@ export function LicenseManagement() {
                         variant="outline"
                         className={getStatusColor(license.attributes.status)}
                       >
-                        {license.attributes.status}
+                        {formatStatus(license.attributes.status)}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -524,11 +532,19 @@ export function LicenseManagement() {
                             <Edit className="mr-2 h-4 w-4" />
                             Edit License
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleViewMachines(license)}>
+                            <Monitor className="mr-2 h-4 w-4" />
+                            View Machines
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleGenerateToken(license)}>
-                            <Download className="mr-2 h-4 w-4" />
+                            <Copy className="mr-2 h-4 w-4" />
                             Generate Token
                           </DropdownMenuItem>
-                          {license.attributes.status === 'active' ? (
+                          <DropdownMenuItem onClick={() => handleCheckoutLicense(license)}>
+                            <FileDown className="mr-2 h-4 w-4" />
+                            Download License File
+                          </DropdownMenuItem>
+                          {license.attributes.status.toLowerCase() === 'active' ? (
                             <DropdownMenuItem
                               onClick={() => handleSuspendLicense(license)}
                             >
@@ -543,7 +559,7 @@ export function LicenseManagement() {
                               Reinstate
                             </DropdownMenuItem>
                           )}
-                          {license.attributes.status === 'expired' && (
+                          {license.attributes.status.toLowerCase() === 'expired' && (
                             <DropdownMenuItem
                               onClick={() => handleRenewLicense(license)}
                             >
@@ -586,103 +602,14 @@ export function LicenseManagement() {
           </Table>
 
           {/* Pagination */}
-          {!isLoading && displayTotalCount > 0 && (
-            <div className="flex items-center justify-between border-t px-6 pt-4 mt-2">
-              {/* Left: showing range + page size */}
-              <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                <span>
-                  Showing{' '}
-                  <span className="font-medium text-foreground">
-                    {Math.min((currentPage - 1) * pageSize + 1, displayTotalCount)}
-                  </span>
-                  {' '}&ndash;{' '}
-                  <span className="font-medium text-foreground">
-                    {Math.min(currentPage * pageSize, displayTotalCount)}
-                  </span>
-                  {' '}of{' '}
-                  <span className="font-medium text-foreground">{displayTotalCount}</span>
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs">Rows</span>
-                  <Select
-                    value={String(pageSize)}
-                    onValueChange={(v) => setPageSize(Number(v))}
-                  >
-                    <SelectTrigger className="h-7 w-[62px] text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PAGE_SIZES.map(size => (
-                        <SelectItem key={size} value={String(size)}>
-                          {size}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Right: page navigation */}
-              {totalPages > 1 && (
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 w-8 p-0"
-                    disabled={currentPage === 1}
-                    onClick={() => goToPage(1)}
-                  >
-                    <ChevronsLeft className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 w-8 p-0"
-                    disabled={currentPage === 1}
-                    onClick={() => goToPage(currentPage - 1)}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-
-                  {getPageNumbers().map((page, idx) =>
-                    page === 'ellipsis' ? (
-                      <span key={`ellipsis-${idx}`} className="px-1 text-muted-foreground text-sm">
-                        ...
-                      </span>
-                    ) : (
-                      <Button
-                        key={page}
-                        variant={currentPage === page ? 'default' : 'outline'}
-                        size="sm"
-                        className="h-8 w-8 p-0 text-xs"
-                        onClick={() => goToPage(page)}
-                      >
-                        {page}
-                      </Button>
-                    )
-                  )}
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 w-8 p-0"
-                    disabled={currentPage === totalPages}
-                    onClick={() => goToPage(currentPage + 1)}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 w-8 p-0"
-                    disabled={currentPage === totalPages}
-                    onClick={() => goToPage(totalPages)}
-                  >
-                    <ChevronsRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
-            </div>
+          {!isLoading && (
+            <PaginationControls
+              currentPage={currentPage}
+              pageSize={pageSize}
+              totalCount={displayTotalCount}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+            />
           )}
         </CardContent>
       </Card>
@@ -704,6 +631,24 @@ export function LicenseManagement() {
           open={editDialogOpen}
           onOpenChange={setEditDialogOpen}
           onLicenseUpdated={handleRefresh}
+        />
+      )}
+
+      {/* Checkout (License File) Dialog */}
+      {selectedLicense && (
+        <CheckoutLicenseDialog
+          license={selectedLicense}
+          open={checkoutDialogOpen}
+          onOpenChange={setCheckoutDialogOpen}
+        />
+      )}
+
+      {/* Details (Machines) Dialog */}
+      {selectedLicense && (
+        <LicenseDetailsDialog
+          license={selectedLicense}
+          open={detailsDialogOpen}
+          onOpenChange={setDetailsDialogOpen}
         />
       )}
     </div>

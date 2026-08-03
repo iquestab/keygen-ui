@@ -1,21 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
-import https from 'https'
-import nodeFetch from 'node-fetch'
-
-const KEYGEN_API_URL = process.env.NEXT_PUBLIC_KEYGEN_API_URL
-if (!KEYGEN_API_URL) {
-  throw new Error('Missing required environment variable: NEXT_PUBLIC_KEYGEN_API_URL')
-}
-
-// Extract base URL without /v1 suffix
-const BASE_URL = KEYGEN_API_URL.replace(/\/v1\/?$/, '')
-
-// Always validate TLS certificates — use NODE_TLS_REJECT_UNAUTHORIZED=0 or a custom CA
-// bundle in development if connecting to a self-signed Keygen instance.
-const httpsAgent = new https.Agent({
-  rejectUnauthorized: true,
-})
+import { KEYGEN_BASE_URL, fetchKeygen } from '@/lib/server/keygen-fetch'
 
 // Allowed top-level Keygen API path segments
 const ALLOWED_PATH_SEGMENTS = new Set([
@@ -35,6 +20,7 @@ const ALLOWED_PATH_SEGMENTS = new Set([
   'request-logs',
   'event-logs',
   'passwords',
+  'packages',
   'releases',
   'artifacts',
   'platforms',
@@ -70,7 +56,7 @@ async function proxyRequest(request: NextRequest, path: string[]) {
     )
   }
 
-  const targetUrl = `${BASE_URL}/v1/${path.join('/')}${request.nextUrl.search}`
+  const targetUrl = `${KEYGEN_BASE_URL}/v1/${path.join('/')}${request.nextUrl.search}`
 
   const headers: Record<string, string> = {
     'Content-Type': request.headers.get('content-type') || 'application/vnd.api+json',
@@ -100,13 +86,27 @@ async function proxyRequest(request: NextRequest, path: string[]) {
     }
   }
 
+  // Keygen responds to artifact creation with a 307 redirect to a pre-signed S3
+  // upload URL rather than a JSON body. Browser `fetch` can't read a `Location`
+  // header off a cross-origin redirect (it comes back as an opaque-redirect
+  // response), so we follow it manually here on the server and hand the browser
+  // a normal 200 JSON response with the upload URL instead.
+  const isArtifactUpload = request.method === 'POST' && path.length === 1 && path[0] === 'artifacts'
+
   try {
-    const response = await nodeFetch(targetUrl, {
+    const response = await fetchKeygen(targetUrl, {
       method: request.method,
       headers,
-      body: body || undefined,
-      agent: targetUrl.startsWith('https') ? httpsAgent : undefined,
+      body,
+      redirect: isArtifactUpload ? 'manual' : 'follow',
     })
+
+    if (isArtifactUpload && response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location')
+      if (location) {
+        return NextResponse.json({ data: null, meta: { uploadUrl: location } }, { status: 200 })
+      }
+    }
 
     const data = await response.text()
 

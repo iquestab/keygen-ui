@@ -45,6 +45,20 @@ import { toast } from 'sonner'
 import { handleLoadError } from '@/lib/utils/error-handling'
 import { CreatePolicyDialog } from './create-policy-dialog'
 import { DeletePolicyDialog } from './delete-policy-dialog'
+import { EditPolicyDialog } from './edit-policy-dialog'
+import { PaginationControls } from '@/components/shared/pagination-controls'
+
+const DEFAULT_PAGE_SIZE = 25
+const SEARCH_DEBOUNCE_MS = 300
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedValue(value), delay)
+    return () => clearTimeout(timer)
+  }, [value, delay])
+  return debouncedValue
+}
 
 export function PolicyManagement() {
   const [policies, setPolicies] = useState<Policy[]>([])
@@ -53,35 +67,92 @@ export function PolicyManagement() {
   const [typeFilter, setTypeFilter] = useState<string>('all')
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [policyToDelete, setPolicyToDelete] = useState<Policy | null>(null)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [policyToEdit, setPolicyToEdit] = useState<Policy | null>(null)
   const api = getKeygenApi()
 
-  const loadPolicies = useCallback(async () => {
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE)
+  const [totalCount, setTotalCount] = useState(0)
+
+  // Search state
+  const [isSearchMode, setIsSearchMode] = useState(false)
+  const debouncedSearch = useDebounce(searchTerm, SEARCH_DEBOUNCE_MS)
+
+  const buildSearchQuery = useCallback((term: string) => {
+    const query: Record<string, string> = {}
+    if (term.length < 3) return query
+
+    query.name = term
+
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-/i
+    if (uuidPattern.test(term)) {
+      query.id = term
+    }
+
+    return query
+  }, [])
+
+  const loadData = useCallback(async () => {
     try {
       setLoading(true)
-      const response = await api.policies.list({ limit: 50 })
-      setPolicies(response.data || [])
+      const searchQuery = debouncedSearch ? buildSearchQuery(debouncedSearch) : null
+      const hasValidSearch = searchQuery && Object.keys(searchQuery).length > 0
+
+      if (hasValidSearch) {
+        setIsSearchMode(true)
+        const response = await api.search.search<Policy>({
+          type: 'policies',
+          query: searchQuery,
+          op: 'OR',
+          page: { size: pageSize, number: currentPage },
+        })
+        setPolicies(response.data || [])
+        setTotalCount(response.meta?.count ?? (response.data?.length || 0))
+      } else {
+        setIsSearchMode(false)
+        const response = await api.policies.list({
+          page: { size: pageSize, number: currentPage },
+        })
+        setPolicies(response.data || [])
+        setTotalCount(response.meta?.count ?? (response.data?.length || 0))
+      }
     } catch (error: unknown) {
       handleLoadError(error, 'policies')
     } finally {
       setLoading(false)
     }
-  }, [api.policies])
+  }, [api.policies, api.search, pageSize, currentPage, debouncedSearch, buildSearchQuery])
 
   useEffect(() => {
-    loadPolicies()
-  }, [loadPolicies])
+    loadData()
+  }, [loadData])
 
+  // Reset to page 1 when filters or search change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [typeFilter, pageSize, debouncedSearch])
+
+  // After creating a policy, jump to page 1 — newly created records are
+  // returned first (reverse-chronological order), so this is where the new
+  // policy will be. If we're already on page 1, force a reload explicitly
+  // instead of relying on the page-reset effect above.
+  const handlePolicyCreated = useCallback(() => {
+    if (currentPage !== 1) {
+      setCurrentPage(1)
+    } else {
+      loadData()
+    }
+  }, [currentPage, loadData])
+
+  // Type filter applied client-side on top of the properly paginated page
   const filteredPolicies = policies.filter(policy => {
-    const matchesSearch = !searchTerm || 
-      policy.attributes.name?.toLowerCase().includes(searchTerm.toLowerCase())
-    
-    const matchesType = typeFilter === 'all' || 
+    return typeFilter === 'all' ||
       (typeFilter === 'floating' && policy.attributes.floating) ||
       (typeFilter === 'node-locked' && !policy.attributes.floating) ||
       (typeFilter === 'protected' && policy.attributes.protected) ||
       (typeFilter === 'strict' && policy.attributes.strict)
-    
-    return matchesSearch && matchesType
   })
 
   const getExpirationText = (duration?: number) => {
@@ -104,6 +175,11 @@ export function PolicyManagement() {
     setDeleteDialogOpen(true)
   }
 
+  const handleEditPolicy = (policy: Policy) => {
+    setPolicyToEdit(policy)
+    setEditDialogOpen(true)
+  }
+
   const copyId = (id: string) => {
     navigator.clipboard.writeText(id)
     toast.success('Policy ID copied to clipboard')
@@ -119,7 +195,7 @@ export function PolicyManagement() {
             Manage licensing policies and rules for your products
           </p>
         </div>
-        <CreatePolicyDialog onPolicyCreated={loadPolicies} />
+        <CreatePolicyDialog onPolicyCreated={handlePolicyCreated} />
       </div>
 
       {/* Stats Cards */}
@@ -130,9 +206,9 @@ export function PolicyManagement() {
             <Shield className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{policies.length}</div>
+            <div className="text-2xl font-bold">{totalCount}</div>
             <p className="text-xs text-muted-foreground">
-              All licensing policies
+              {isSearchMode ? 'Matching search' : 'All licensing policies'}
             </p>
           </CardContent>
         </Card>
@@ -303,7 +379,7 @@ export function PolicyManagement() {
                           Copy ID
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleEditPolicy(policy)}>
                           <Edit className="mr-2 h-4 w-4" />
                           Edit Policy
                         </DropdownMenuItem>
@@ -325,13 +401,33 @@ export function PolicyManagement() {
         </Table>
       </div>
 
+      {!loading && (
+        <PaginationControls
+          currentPage={currentPage}
+          pageSize={pageSize}
+          totalCount={totalCount}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+        />
+      )}
+
       {/* Delete Dialog */}
       {policyToDelete && (
         <DeletePolicyDialog
           policy={policyToDelete}
           open={deleteDialogOpen}
           onOpenChange={setDeleteDialogOpen}
-          onPolicyDeleted={loadPolicies}
+          onPolicyDeleted={loadData}
+        />
+      )}
+
+      {/* Edit Dialog */}
+      {policyToEdit && (
+        <EditPolicyDialog
+          policy={policyToEdit}
+          open={editDialogOpen}
+          onOpenChange={setEditDialogOpen}
+          onPolicyUpdated={loadData}
         />
       )}
     </div>

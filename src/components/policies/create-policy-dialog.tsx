@@ -22,7 +22,8 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Plus } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Plus, HelpCircle } from 'lucide-react'
 import { getKeygenApi } from '@/lib/api'
 import { toast } from 'sonner'
 import { Product } from '@/lib/types/keygen'
@@ -44,7 +45,6 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
     duration: '',
     strict: false,
     floating: false,
-    concurrent: false,
     protected: false,
     requireHeartbeat: false,
     heartbeatDuration: '3600',
@@ -61,7 +61,27 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
     machineLeasingStrategy: 'PER_LICENSE' as 'PER_LICENSE' | 'PER_USER' | 'ALWAYS_ALLOW',
     processLeasingStrategy: 'PER_MACHINE' as 'PER_MACHINE' | 'PER_LICENSE' | 'PER_USER' | 'ALWAYS_ALLOW',
     overageStrategy: 'NO_OVERAGE' as 'NO_OVERAGE' | 'ALWAYS_ALLOW_OVERAGE' | 'ALLOW_1_25X_OVERAGE' | 'ALLOW_1_5X_OVERAGE' | 'ALLOW_2X_OVERAGE',
+    scheme: 'NONE' as 'NONE' | 'ED25519_SIGN' | 'RSA_2048_PKCS1_SIGN' | 'RSA_2048_PKCS1_PSS_SIGN' | 'RSA_2048_PKCS1_ENCRYPT' | 'RSA_2048_JWT_RS256',
     metadata: ''
+  })
+
+  // Keygen's API has previously rejected policy creation with "unpermitted parameter"
+  // errors when these strategy fields are sent unconditionally (see CLAUDE.md). Since
+  // they're Selects with real default values (not blank placeholders), we can't tell
+  // "user picked the default" from "user never touched this" any other way — so track
+  // it explicitly and only send a strategy if the user actually changed it.
+  const [touchedStrategies, setTouchedStrategies] = useState({
+    authenticationStrategy: false,
+    expirationStrategy: false,
+    overageStrategy: false,
+    machineUniquenessStrategy: false,
+    machineMatchingStrategy: false,
+    expirationBasis: false,
+    renewalBasis: false,
+    transferStrategy: false,
+    machineLeasingStrategy: false,
+    processLeasingStrategy: false,
+    heartbeatResurrectionStrategy: false,
   })
 
   const api = getKeygenApi()
@@ -115,7 +135,6 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
       // Add boolean flags if enabled
       if (formData.strict) policyData.strict = true
       if (formData.floating) policyData.floating = true
-      if (formData.concurrent) policyData.concurrent = true
       if (formData.protected) policyData.protected = true
 
       // Add heartbeat settings if heartbeat is required
@@ -125,14 +144,50 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
           policyData.heartbeatDuration = parseInt(formData.heartbeatDuration)
         }
         policyData.heartbeatCullStrategy = formData.heartbeatCullStrategy
-        policyData.heartbeatResurrectionStrategy = formData.heartbeatResurrectionStrategy
         policyData.heartbeatBasis = formData.heartbeatBasis
+        if (touchedStrategies.heartbeatResurrectionStrategy) {
+          policyData.heartbeatResurrectionStrategy = formData.heartbeatResurrectionStrategy
+        }
       }
 
-      // Add strategy fields - these are the key fields users configure
-      policyData.authenticationStrategy = formData.authenticationStrategy
-      policyData.expirationStrategy = formData.expirationStrategy
-      policyData.overageStrategy = formData.overageStrategy
+      // Only send strategy fields the user actually changed from their default —
+      // sending them unconditionally previously caused "unpermitted parameter" errors.
+      if (touchedStrategies.authenticationStrategy) {
+        policyData.authenticationStrategy = formData.authenticationStrategy
+      }
+      if (touchedStrategies.expirationStrategy) {
+        policyData.expirationStrategy = formData.expirationStrategy
+      }
+      if (touchedStrategies.overageStrategy) {
+        policyData.overageStrategy = formData.overageStrategy
+      }
+      if (touchedStrategies.machineUniquenessStrategy) {
+        policyData.machineUniquenessStrategy = formData.machineUniquenessStrategy
+      }
+      if (touchedStrategies.machineMatchingStrategy) {
+        policyData.machineMatchingStrategy = formData.machineMatchingStrategy
+      }
+      if (touchedStrategies.expirationBasis) {
+        policyData.expirationBasis = formData.expirationBasis
+      }
+      if (touchedStrategies.renewalBasis) {
+        policyData.renewalBasis = formData.renewalBasis
+      }
+      if (touchedStrategies.transferStrategy) {
+        policyData.transferStrategy = formData.transferStrategy
+      }
+      if (touchedStrategies.machineLeasingStrategy) {
+        policyData.machineLeasingStrategy = formData.machineLeasingStrategy
+      }
+      if (touchedStrategies.processLeasingStrategy) {
+        policyData.processLeasingStrategy = formData.processLeasingStrategy
+      }
+
+      // Signing scheme is immutable after creation, so only send it if the user
+      // actually picked one — 'NONE' means "don't send", not "explicitly no scheme".
+      if (formData.scheme !== 'NONE') {
+        policyData.scheme = formData.scheme
+      }
 
       // Add metadata if provided
       if (formData.metadata && formData.metadata.trim()) {
@@ -147,37 +202,54 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
 
       toast.success('Policy created successfully')
       setOpen(false)
-      setFormData({
-        name: '',
-        productId: '',
-        duration: '',
-        strict: false,
-        floating: false,
-        concurrent: false,
-        protected: false,
-        requireHeartbeat: false,
-        heartbeatDuration: '3600',
-        heartbeatCullStrategy: 'DEACTIVATE_DEAD',
-        heartbeatResurrectionStrategy: 'NO_REVIVE',
-        heartbeatBasis: 'FROM_CREATION',
-        machineUniquenessStrategy: 'UNIQUE_PER_LICENSE',
-        machineMatchingStrategy: 'MATCH_ANY',
-        expirationStrategy: 'RESTRICT_ACCESS',
-        expirationBasis: 'FROM_CREATION',
-        renewalBasis: 'FROM_EXPIRY',
-        transferStrategy: 'RESET_EXPIRY',
-        authenticationStrategy: 'TOKEN',
-        machineLeasingStrategy: 'PER_LICENSE',
-        processLeasingStrategy: 'PER_MACHINE',
-        overageStrategy: 'NO_OVERAGE',
-        metadata: ''
-      })
+      resetForm()
       onPolicyCreated?.()
     } catch (error: unknown) {
       handleFormError(error, 'Policy')
     } finally {
       setLoading(false)
     }
+  }
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      productId: '',
+      duration: '',
+      strict: false,
+      floating: false,
+      protected: false,
+      requireHeartbeat: false,
+      heartbeatDuration: '3600',
+      heartbeatCullStrategy: 'DEACTIVATE_DEAD',
+      heartbeatResurrectionStrategy: 'NO_REVIVE',
+      heartbeatBasis: 'FROM_CREATION',
+      machineUniquenessStrategy: 'UNIQUE_PER_LICENSE',
+      machineMatchingStrategy: 'MATCH_ANY',
+      expirationStrategy: 'RESTRICT_ACCESS',
+      expirationBasis: 'FROM_CREATION',
+      renewalBasis: 'FROM_EXPIRY',
+      transferStrategy: 'RESET_EXPIRY',
+      authenticationStrategy: 'TOKEN',
+      machineLeasingStrategy: 'PER_LICENSE',
+      processLeasingStrategy: 'PER_MACHINE',
+      overageStrategy: 'NO_OVERAGE',
+      scheme: 'NONE',
+      metadata: ''
+    })
+    setTouchedStrategies({
+      authenticationStrategy: false,
+      expirationStrategy: false,
+      overageStrategy: false,
+      machineUniquenessStrategy: false,
+      machineMatchingStrategy: false,
+      expirationBasis: false,
+      renewalBasis: false,
+      transferStrategy: false,
+      machineLeasingStrategy: false,
+      processLeasingStrategy: false,
+      heartbeatResurrectionStrategy: false,
+    })
   }
 
   return (
@@ -202,7 +274,15 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
             <h4 className="text-sm font-medium">Basic Information</h4>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Policy Name *</Label>
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="name">Policy Name *</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>A human-readable label to help you identify this policy</TooltipContent>
+                  </Tooltip>
+                </div>
                 <Input
                   id="name"
                   placeholder="e.g., Standard License Policy"
@@ -212,7 +292,15 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="product">Product *</Label>
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="product">Product *</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>The product this policy&apos;s licenses will belong to</TooltipContent>
+                  </Tooltip>
+                </div>
                 <Select
                   value={formData.productId}
                   onValueChange={(value) => setFormData({ ...formData, productId: value })}
@@ -232,7 +320,15 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
                 <p className="text-xs text-muted-foreground">Choose which product this policy applies to</p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="duration">Duration (seconds)</Label>
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="duration">Duration (seconds)</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>How long a license created under this policy remains valid before expiring</TooltipContent>
+                  </Tooltip>
+                </div>
                 <Input
                   id="duration"
                   type="number"
@@ -250,37 +346,87 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
             <h4 className="text-sm font-medium">Policy Type</h4>
             <div className="grid grid-cols-2 gap-4">
               <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="strict" 
+                <Checkbox
+                  id="strict"
                   checked={formData.strict}
                   onCheckedChange={(checked) => setFormData({ ...formData, strict: !!checked })}
                 />
                 <Label htmlFor="strict">Strict validation</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Require every validation scope (product, machine, etc.) to be explicitly provided rather than inferred</TooltipContent>
+                </Tooltip>
               </div>
               <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="floating" 
+                <Checkbox
+                  id="floating"
                   checked={formData.floating}
                   onCheckedChange={(checked) => setFormData({ ...formData, floating: !!checked })}
                 />
                 <Label htmlFor="floating">Floating license</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Allow a license&apos;s activations to be shared/pooled across machines rather than permanently tied to one device</TooltipContent>
+                </Tooltip>
               </div>
               <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="concurrent" 
-                  checked={formData.concurrent}
-                  onCheckedChange={(checked) => setFormData({ ...formData, concurrent: !!checked })}
-                />
-                <Label htmlFor="concurrent">Allow concurrent usage</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="protected" 
+                <Checkbox
+                  id="protected"
                   checked={formData.protected}
                   onCheckedChange={(checked) => setFormData({ ...formData, protected: !!checked })}
                 />
                 <Label htmlFor="protected">Write-protected</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Prevent licenses under this policy from being modified via the API once created</TooltipContent>
+                </Tooltip>
               </div>
+            </div>
+          </div>
+
+          {/* Offline Licensing */}
+          <div className="space-y-4">
+            <h4 className="text-sm font-medium">Offline Licensing</h4>
+            <div className="space-y-2">
+              <div className="flex items-center gap-1">
+                <Label htmlFor="scheme">Cryptographic Scheme</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Required to check out signed license files for air-gapped/offline verification. Cannot be changed after the policy is created.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Select
+                value={formData.scheme}
+                onValueChange={(value: 'NONE' | 'ED25519_SIGN' | 'RSA_2048_PKCS1_SIGN' | 'RSA_2048_PKCS1_PSS_SIGN' | 'RSA_2048_PKCS1_ENCRYPT' | 'RSA_2048_JWT_RS256') =>
+                  setFormData({ ...formData, scheme: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NONE">None (online validation only)</SelectItem>
+                  <SelectItem value="ED25519_SIGN">Ed25519 Signature</SelectItem>
+                  <SelectItem value="RSA_2048_PKCS1_SIGN">RSA-2048 PKCS1 Signature</SelectItem>
+                  <SelectItem value="RSA_2048_PKCS1_PSS_SIGN">RSA-2048 PKCS1 PSS Signature</SelectItem>
+                  <SelectItem value="RSA_2048_PKCS1_ENCRYPT">RSA-2048 PKCS1 Encrypt</SelectItem>
+                  <SelectItem value="RSA_2048_JWT_RS256">RSA-2048 JWT (RS256)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Licenses under this policy will be signed with this key, allowing you to check out a
+                &quot;.lic&quot; file that can be verified offline, without calling the API.
+              </p>
             </div>
           </div>
 
@@ -289,18 +435,32 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
             <h4 className="text-sm font-medium">Heartbeat Settings</h4>
             <div className="space-y-4">
               <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="requireHeartbeat" 
+                <Checkbox
+                  id="requireHeartbeat"
                   checked={formData.requireHeartbeat}
                   onCheckedChange={(checked) => setFormData({ ...formData, requireHeartbeat: !!checked })}
                 />
                 <Label htmlFor="requireHeartbeat">Require heartbeat</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Require machines to periodically &quot;check in&quot; (ping) to stay considered alive</TooltipContent>
+                </Tooltip>
               </div>
-              
+
               {formData.requireHeartbeat && (
                 <div className="grid grid-cols-3 gap-4 ml-6">
                   <div className="space-y-2">
-                    <Label htmlFor="heartbeatDuration">Heartbeat Duration (seconds)</Label>
+                    <div className="flex items-center gap-1">
+                      <Label htmlFor="heartbeatDuration">Heartbeat Duration (seconds)</Label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="size-3.5 text-muted-foreground" />
+                        </TooltipTrigger>
+                        <TooltipContent>How long a machine can go without pinging before it&apos;s considered dead</TooltipContent>
+                      </Tooltip>
+                    </div>
                     <Input
                       id="heartbeatDuration"
                       type="number"
@@ -309,7 +469,15 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="heartbeatCullStrategy">Cull Strategy</Label>
+                    <div className="flex items-center gap-1">
+                      <Label htmlFor="heartbeatCullStrategy">Cull Strategy</Label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="size-3.5 text-muted-foreground" />
+                        </TooltipTrigger>
+                        <TooltipContent>What happens to a machine once it&apos;s considered dead — deactivate it, or keep it around</TooltipContent>
+                      </Tooltip>
+                    </div>
                     <Select
                       value={formData.heartbeatCullStrategy}
                       onValueChange={(value: 'DEACTIVATE_DEAD' | 'KEEP_DEAD') => setFormData({ ...formData, heartbeatCullStrategy: value })}
@@ -324,7 +492,15 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="heartbeatBasis">Heartbeat Basis</Label>
+                    <div className="flex items-center gap-1">
+                      <Label htmlFor="heartbeatBasis">Heartbeat Basis</Label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="size-3.5 text-muted-foreground" />
+                        </TooltipTrigger>
+                        <TooltipContent>When the heartbeat &quot;clock&quot; starts counting — from the machine&apos;s creation, or from its first ping</TooltipContent>
+                      </Tooltip>
+                    </div>
                     <Select
                       value={formData.heartbeatBasis}
                       onValueChange={(value: 'FROM_CREATION' | 'FROM_FIRST_PING') => setFormData({ ...formData, heartbeatBasis: value })}
@@ -338,6 +514,32 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
                       </SelectContent>
                     </Select>
                   </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-1">
+                      <Label htmlFor="heartbeatResurrectionStrategy">Resurrection Strategy</Label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="size-3.5 text-muted-foreground" />
+                        </TooltipTrigger>
+                        <TooltipContent>Whether a dead machine can come back to life if it pings again, or stays dead permanently</TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <Select
+                      value={formData.heartbeatResurrectionStrategy}
+                      onValueChange={(value: 'NO_REVIVE' | 'ALWAYS_REVIVE') => {
+                        setFormData({ ...formData, heartbeatResurrectionStrategy: value })
+                        setTouchedStrategies(prev => ({ ...prev, heartbeatResurrectionStrategy: true }))
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="NO_REVIVE">No Revive</SelectItem>
+                        <SelectItem value="ALWAYS_REVIVE">Always Revive</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               )}
             </div>
@@ -348,10 +550,21 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
             <h4 className="text-sm font-medium">Advanced Settings</h4>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="expirationStrategy">Expiration Strategy</Label>
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="expirationStrategy">Expiration Strategy</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>What happens to a license once it expires — restrict some access, revoke it entirely, or keep it working</TooltipContent>
+                  </Tooltip>
+                </div>
                 <Select
                   value={formData.expirationStrategy}
-                  onValueChange={(value: 'RESTRICT_ACCESS' | 'REVOKE_ACCESS' | 'MAINTAIN_ACCESS') => setFormData({ ...formData, expirationStrategy: value })}
+                  onValueChange={(value: 'RESTRICT_ACCESS' | 'REVOKE_ACCESS' | 'MAINTAIN_ACCESS') => {
+                    setFormData({ ...formData, expirationStrategy: value })
+                    setTouchedStrategies(prev => ({ ...prev, expirationStrategy: true }))
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -364,10 +577,21 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="authenticationStrategy">Authentication Strategy</Label>
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="authenticationStrategy">Authentication Strategy</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>How machines/users authenticate under this policy&apos;s licenses — by token, license key, either, or none</TooltipContent>
+                  </Tooltip>
+                </div>
                 <Select
                   value={formData.authenticationStrategy}
-                  onValueChange={(value: 'TOKEN' | 'LICENSE' | 'MIXED' | 'NONE') => setFormData({ ...formData, authenticationStrategy: value })}
+                  onValueChange={(value: 'TOKEN' | 'LICENSE' | 'MIXED' | 'NONE') => {
+                    setFormData({ ...formData, authenticationStrategy: value })
+                    setTouchedStrategies(prev => ({ ...prev, authenticationStrategy: true }))
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -381,10 +605,21 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="overageStrategy">Overage Strategy</Label>
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="overageStrategy">Overage Strategy</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>Whether licenses can exceed their machine/process limits, and by how much</TooltipContent>
+                  </Tooltip>
+                </div>
                 <Select
                   value={formData.overageStrategy}
-                  onValueChange={(value: 'NO_OVERAGE' | 'ALWAYS_ALLOW_OVERAGE' | 'ALLOW_1_25X_OVERAGE' | 'ALLOW_1_5X_OVERAGE' | 'ALLOW_2X_OVERAGE') => setFormData({ ...formData, overageStrategy: value })}
+                  onValueChange={(value: 'NO_OVERAGE' | 'ALWAYS_ALLOW_OVERAGE' | 'ALLOW_1_25X_OVERAGE' | 'ALLOW_1_5X_OVERAGE' | 'ALLOW_2X_OVERAGE') => {
+                    setFormData({ ...formData, overageStrategy: value })
+                    setTouchedStrategies(prev => ({ ...prev, overageStrategy: true }))
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -398,12 +633,210 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="machineUniquenessStrategy">Machine Uniqueness Strategy</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>Whether a machine fingerprint must be unique per license, or unique across the whole account</TooltipContent>
+                  </Tooltip>
+                </div>
+                <Select
+                  value={formData.machineUniquenessStrategy}
+                  onValueChange={(value: 'UNIQUE_PER_LICENSE' | 'UNIQUE_PER_ACCOUNT') => {
+                    setFormData({ ...formData, machineUniquenessStrategy: value })
+                    setTouchedStrategies(prev => ({ ...prev, machineUniquenessStrategy: true }))
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="UNIQUE_PER_LICENSE">Unique Per License</SelectItem>
+                    <SelectItem value="UNIQUE_PER_ACCOUNT">Unique Per Account</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="machineMatchingStrategy">Machine Matching Strategy</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>How many of a license&apos;s associated machines must match at validation time</TooltipContent>
+                  </Tooltip>
+                </div>
+                <Select
+                  value={formData.machineMatchingStrategy}
+                  onValueChange={(value: 'MATCH_ANY' | 'MATCH_TWO' | 'MATCH_MOST' | 'MATCH_ALL') => {
+                    setFormData({ ...formData, machineMatchingStrategy: value })
+                    setTouchedStrategies(prev => ({ ...prev, machineMatchingStrategy: true }))
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="MATCH_ANY">Match Any</SelectItem>
+                    <SelectItem value="MATCH_TWO">Match Two</SelectItem>
+                    <SelectItem value="MATCH_MOST">Match Most</SelectItem>
+                    <SelectItem value="MATCH_ALL">Match All</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="expirationBasis">Expiration Basis</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>What event starts the license&apos;s expiration countdown — creation, first validation, first activation, first download, or first use</TooltipContent>
+                  </Tooltip>
+                </div>
+                <Select
+                  value={formData.expirationBasis}
+                  onValueChange={(value: 'FROM_CREATION' | 'FROM_FIRST_VALIDATION' | 'FROM_FIRST_ACTIVATION' | 'FROM_FIRST_DOWNLOAD' | 'FROM_FIRST_USE') => {
+                    setFormData({ ...formData, expirationBasis: value })
+                    setTouchedStrategies(prev => ({ ...prev, expirationBasis: true }))
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="FROM_CREATION">From Creation</SelectItem>
+                    <SelectItem value="FROM_FIRST_VALIDATION">From First Validation</SelectItem>
+                    <SelectItem value="FROM_FIRST_ACTIVATION">From First Activation</SelectItem>
+                    <SelectItem value="FROM_FIRST_DOWNLOAD">From First Download</SelectItem>
+                    <SelectItem value="FROM_FIRST_USE">From First Use</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="renewalBasis">Renewal Basis</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>When a renewed license&apos;s new expiry is calculated from — its original expiry date, or the moment it&apos;s renewed</TooltipContent>
+                  </Tooltip>
+                </div>
+                <Select
+                  value={formData.renewalBasis}
+                  onValueChange={(value: 'FROM_EXPIRY' | 'FROM_NOW') => {
+                    setFormData({ ...formData, renewalBasis: value })
+                    setTouchedStrategies(prev => ({ ...prev, renewalBasis: true }))
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="FROM_EXPIRY">From Expiry</SelectItem>
+                    <SelectItem value="FROM_NOW">From Now</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="transferStrategy">Transfer Strategy</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>What happens to a license&apos;s expiry when it&apos;s transferred to a different policy — reset it, or keep the current expiry</TooltipContent>
+                  </Tooltip>
+                </div>
+                <Select
+                  value={formData.transferStrategy}
+                  onValueChange={(value: 'RESET_EXPIRY' | 'KEEP_EXPIRY') => {
+                    setFormData({ ...formData, transferStrategy: value })
+                    setTouchedStrategies(prev => ({ ...prev, transferStrategy: true }))
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="RESET_EXPIRY">Reset Expiry</SelectItem>
+                    <SelectItem value="KEEP_EXPIRY">Keep Expiry</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="machineLeasingStrategy">Machine Leasing Strategy</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>How floating machine slots are leased out — per license, per user, or always allowed regardless of limits</TooltipContent>
+                  </Tooltip>
+                </div>
+                <Select
+                  value={formData.machineLeasingStrategy}
+                  onValueChange={(value: 'PER_LICENSE' | 'PER_USER' | 'ALWAYS_ALLOW') => {
+                    setFormData({ ...formData, machineLeasingStrategy: value })
+                    setTouchedStrategies(prev => ({ ...prev, machineLeasingStrategy: true }))
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="PER_LICENSE">Per License</SelectItem>
+                    <SelectItem value="PER_USER">Per User</SelectItem>
+                    <SelectItem value="ALWAYS_ALLOW">Always Allow</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="processLeasingStrategy">Process Leasing Strategy</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>How floating process slots are leased out — per machine, per license, per user, or always allowed regardless of limits</TooltipContent>
+                  </Tooltip>
+                </div>
+                <Select
+                  value={formData.processLeasingStrategy}
+                  onValueChange={(value: 'PER_MACHINE' | 'PER_LICENSE' | 'PER_USER' | 'ALWAYS_ALLOW') => {
+                    setFormData({ ...formData, processLeasingStrategy: value })
+                    setTouchedStrategies(prev => ({ ...prev, processLeasingStrategy: true }))
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="PER_MACHINE">Per Machine</SelectItem>
+                    <SelectItem value="PER_LICENSE">Per License</SelectItem>
+                    <SelectItem value="PER_USER">Per User</SelectItem>
+                    <SelectItem value="ALWAYS_ALLOW">Always Allow</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
 
           {/* Metadata */}
           <div className="space-y-2">
-            <Label htmlFor="metadata">Metadata (Optional)</Label>
+            <div className="flex items-center gap-1">
+              <Label htmlFor="metadata">Metadata (Optional)</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="size-3.5 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent>Freeform JSON object for your own custom tracking data</TooltipContent>
+              </Tooltip>
+            </div>
             <Textarea
               id="metadata"
               placeholder='{&quot;description&quot;: &quot;Policy description&quot;, &quot;tags&quot;: [&quot;enterprise&quot;]}'
@@ -417,7 +850,7 @@ export function CreatePolicyDialog({ onPolicyCreated }: CreatePolicyDialogProps)
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => { setOpen(false); resetForm() }}>
               Cancel
             </Button>
             <Button type="submit" disabled={loading}>

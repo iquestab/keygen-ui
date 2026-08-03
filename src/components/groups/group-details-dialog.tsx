@@ -187,7 +187,7 @@ export function GroupDetailsDialog({
                           {license.attributes.key}
                         </p>
                       </div>
-                      <Badge variant={license.attributes.status === 'active' ? 'default' : 'secondary'}>
+                      <Badge variant={license.attributes.status.toLowerCase() === 'active' ? 'default' : 'secondary'}>
                         {license.attributes.status}
                       </Badge>
                     </div>
@@ -233,7 +233,7 @@ export function GroupDetailsDialog({
                       </div>
                       <div className="flex gap-2">
                         <Badge variant="outline">{user.attributes.role}</Badge>
-                        <Badge variant={user.attributes.status === 'active' ? 'default' : 'secondary'}>
+                        <Badge variant={user.attributes.status.toLowerCase() === 'active' ? 'default' : 'secondary'}>
                           {user.attributes.status}
                         </Badge>
                       </div>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from "react"
-import { Key, Users, Monitor, Package } from "lucide-react"
+import { Key, Users, Monitor, Package, AlertTriangle } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import {
@@ -12,16 +12,23 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { getKeygenApi } from "@/lib/api"
+import { getUserFriendlyErrorMessage } from "@/lib/utils/error-handling"
+
+interface StatResult {
+  count: number
+  error: string | null
+}
+
+const emptyStat: StatResult = { count: 0, error: null }
 
 export function SectionCards() {
-  const [stats, setStats] = useState({
-    licenses: 0,
-    users: 0, 
-    machines: 0,
-    products: 0,
-    loading: true
-  })
+  const [loading, setLoading] = useState(true)
+  const [licenses, setLicenses] = useState<StatResult>(emptyStat)
+  const [users, setUsers] = useState<StatResult>(emptyStat)
+  const [machines, setMachines] = useState<StatResult>(emptyStat)
+  const [products, setProducts] = useState<StatResult>(emptyStat)
 
   const api = getKeygenApi()
 
@@ -29,41 +36,70 @@ export function SectionCards() {
     let cancelled = false
 
     async function loadDashboardStats() {
-      try {
-        const [licensesResponse, usersResponse, machinesResponse, productsResponse] = await Promise.all([
-          api.licenses.list({ limit: 1 }).catch(() => ({ data: [], meta: { count: 0 } })),
-          api.users.list({ limit: 1 }).catch(() => ({ data: [], meta: { count: 0 } })),
-          api.machines.list({ limit: 1 }).catch(() => ({ data: [], meta: { count: 0 } })),
-          api.products.list({ limit: 1 }).catch(() => ({ data: [], meta: { count: 0 } })),
-        ])
+      // Keygen's API doesn't reliably return meta.count on this instance, so we can't
+      // fetch just 1 record and trust a count alongside it — request a full page and
+      // count the returned records, using the same page[size]/page[number] param shape
+      // as the individual list pages (license-management.tsx, user-management.tsx, etc.)
+      // rather than the bare `limit` param, since this API may handle that inconsistently
+      // per-endpoint. Each resource is settled independently so one failing (e.g. a
+      // permissions error on /users) doesn't collapse into a misleading "0" for every
+      // card — a failed fetch shows an explicit error state instead of a fake zero count.
+      const page = { size: 100, number: 1 }
+      const [licensesResult, usersResult, machinesResult, productsResult] = await Promise.allSettled([
+        api.licenses.list({ page }),
+        api.users.list({ page }),
+        api.machines.list({ page }),
+        api.products.list({ page }),
+      ])
 
-        if (cancelled) return
+      if (cancelled) return
 
-        setStats({
-          licenses: (typeof licensesResponse.meta?.count === 'number' ? licensesResponse.meta.count : 0) || (Array.isArray(licensesResponse.data) ? licensesResponse.data.length : 0),
-          users: (typeof usersResponse.meta?.count === 'number' ? usersResponse.meta.count : 0) || (Array.isArray(usersResponse.data) ? usersResponse.data.length : 0),
-          machines: (typeof machinesResponse.meta?.count === 'number' ? machinesResponse.meta.count : 0) || (Array.isArray(machinesResponse.data) ? machinesResponse.data.length : 0),
-          products: (typeof productsResponse.meta?.count === 'number' ? productsResponse.meta.count : 0) || (Array.isArray(productsResponse.data) ? productsResponse.data.length : 0),
-          loading: false
-        })
-      } catch (error) {
-        if (cancelled) return
-        console.error('Failed to load dashboard stats:', error)
-        setStats(prev => ({ ...prev, loading: false }))
+      const toStat = (result: PromiseSettledResult<{ data?: unknown[]; meta?: { count?: number } }>, label: string): StatResult => {
+        if (result.status === 'rejected') {
+          console.error(`Failed to load ${label} count for dashboard:`, result.reason)
+          return { count: 0, error: getUserFriendlyErrorMessage(result.reason, `Failed to load ${label}`) }
+        }
+        const { data, meta } = result.value
+        return { count: meta?.count ?? (Array.isArray(data) ? data.length : 0), error: null }
       }
+
+      setLicenses(toStat(licensesResult, 'licenses'))
+      setUsers(toStat(usersResult, 'users'))
+      setMachines(toStat(machinesResult, 'machines'))
+      setProducts(toStat(productsResult, 'products'))
+      setLoading(false)
     }
 
     loadDashboardStats()
 
     return () => { cancelled = true }
   }, [api.licenses, api.users, api.machines, api.products])
+
+  const renderCount = (stat: StatResult) => {
+    if (loading) return '...'
+    if (stat.error) {
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex items-center gap-1.5 text-destructive">
+              <AlertTriangle className="size-5" />
+              <span className="text-base font-normal">Failed to load</span>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{stat.error}</TooltipContent>
+        </Tooltip>
+      )
+    }
+    return stat.count.toLocaleString()
+  }
+
   return (
     <div className="*:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card dark:*:data-[slot=card]:bg-card grid grid-cols-1 gap-4 px-4 *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:shadow-xs lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
       <Card className="@container/card">
         <CardHeader>
-          <CardDescription>Active Licenses</CardDescription>
+          <CardDescription>Total Licenses</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            {stats.loading ? '...' : stats.licenses.toLocaleString()}
+            {renderCount(licenses)}
           </CardTitle>
           <CardAction>
             <Badge variant="outline">
@@ -85,7 +121,7 @@ export function SectionCards() {
         <CardHeader>
           <CardDescription>Registered Users</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            {stats.loading ? '...' : stats.users.toLocaleString()}
+            {renderCount(users)}
           </CardTitle>
           <CardAction>
             <Badge variant="outline">
@@ -107,7 +143,7 @@ export function SectionCards() {
         <CardHeader>
           <CardDescription>Active Machines</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            {stats.loading ? '...' : stats.machines.toLocaleString()}
+            {renderCount(machines)}
           </CardTitle>
           <CardAction>
             <Badge variant="outline">
@@ -127,7 +163,7 @@ export function SectionCards() {
         <CardHeader>
           <CardDescription>Products</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            {stats.loading ? '...' : stats.products.toLocaleString()}
+            {renderCount(products)}
           </CardTitle>
           <CardAction>
             <Badge variant="outline">

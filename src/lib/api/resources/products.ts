@@ -1,5 +1,9 @@
 import { KeygenClient } from '../client';
-import { Product, KeygenResponse, ListOptions, KeygenListResponse } from '../../types/keygen';
+import { Product, KeygenResponse, PaginationOptions, KeygenListResponse } from '../../types/keygen';
+
+export interface ProductFilters extends PaginationOptions {
+  name?: string;
+}
 
 export class ProductResource {
   constructor(private client: KeygenClient) {}
@@ -7,16 +11,14 @@ export class ProductResource {
   /**
    * List all products
    */
-  async list(options?: ListOptions): Promise<KeygenListResponse<Product>> {
-    const queryParams = new URLSearchParams();
-    
-    if (options?.limit) queryParams.set('limit', options.limit.toString());
-    if (options?.page) queryParams.set('page', options.page.toString());
-    
-    const query = queryParams.toString();
-    const endpoint = query ? `/products?${query}` : '/products';
-    
-    return this.client.request<Product[]>(endpoint);
+  async list(filters: ProductFilters = {}): Promise<KeygenListResponse<Product>> {
+    const params = {
+      ...this.client.buildPaginationParams(filters),
+    };
+
+    if (filters.name) params.name = filters.name;
+
+    return this.client.request<Product[]>('/products', { params });
   }
 
   /**

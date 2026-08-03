@@ -13,7 +13,8 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Edit } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Edit, HelpCircle } from 'lucide-react'
 import { getKeygenApi } from '@/lib/api'
 import { toast } from 'sonner'
 import { License } from '@/lib/types/keygen'
@@ -105,7 +106,7 @@ export function EditLicenseDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Edit className="h-5 w-5" />
@@ -130,7 +131,15 @@ export function EditLicenseDialog({
 
           {/* Name */}
           <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
+            <div className="flex items-center gap-1">
+              <Label htmlFor="name">Name</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="size-3.5 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent>A human-readable label to help you identify this license</TooltipContent>
+              </Tooltip>
+            </div>
             <Input
               id="name"
               placeholder="Enter license name (optional)"
@@ -141,7 +150,15 @@ export function EditLicenseDialog({
 
           {/* Expiry Date */}
           <div className="space-y-2">
-            <Label htmlFor="expiry">Expiry Date</Label>
+            <div className="flex items-center gap-1">
+              <Label htmlFor="expiry">Expiry Date</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="size-3.5 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent>The date this license stops working. Leave empty for no expiration.</TooltipContent>
+              </Tooltip>
+            </div>
             <Input
               id="expiry"
               type="date"
@@ -155,7 +172,15 @@ export function EditLicenseDialog({
 
           {/* Max Uses */}
           <div className="space-y-2">
-            <Label htmlFor="maxUses">Maximum Uses</Label>
+            <div className="flex items-center gap-1">
+              <Label htmlFor="maxUses">Maximum Uses</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="size-3.5 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent>Caps how many times this license can be activated or validated. Leave blank for unlimited.</TooltipContent>
+              </Tooltip>
+            </div>
             <Input
               id="maxUses"
               type="number"
@@ -171,7 +196,15 @@ export function EditLicenseDialog({
 
           {/* Metadata */}
           <div className="space-y-2">
-            <Label htmlFor="metadata">Metadata (JSON)</Label>
+            <div className="flex items-center gap-1">
+              <Label htmlFor="metadata">Metadata (JSON)</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="size-3.5 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent>Freeform JSON object for your own custom tracking data (e.g. customer ID, order number)</TooltipContent>
+              </Tooltip>
+            </div>
             <Textarea
               id="metadata"
               placeholder='{&quot;key&quot;: &quot;value&quot;}'

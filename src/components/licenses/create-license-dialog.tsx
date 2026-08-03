@@ -32,6 +32,14 @@ import { Entitlement, Group, Policy, User } from '@/lib/types/keygen'
 import { handleFormError, handleLoadError } from '@/lib/utils/error-handling'
 import { toast } from 'sonner'
 
+const SCHEME_LABELS: Record<string, string> = {
+  ED25519_SIGN: 'Ed25519 Signature',
+  RSA_2048_PKCS1_SIGN: 'RSA-2048 PKCS1 Signature',
+  RSA_2048_PKCS1_PSS_SIGN: 'RSA-2048 PKCS1 PSS Signature',
+  RSA_2048_PKCS1_ENCRYPT: 'RSA-2048 PKCS1 Encrypt',
+  RSA_2048_JWT_RS256: 'RSA-2048 JWT (RS256)',
+}
+
 interface CreateLicenseDialogProps {
   onLicenseCreated?: () => void
 }
@@ -52,8 +60,9 @@ export function CreateLicenseDialog({ onLicenseCreated }: CreateLicenseDialogPro
     key: '',
     protected: true,
     permissions: '',
+    maxUses: '',
     expiry: undefined as Date | undefined,
-    
+
   })
   const [metadata, setMetadata] = useState<{ key: string; value: string }[]>([])
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
@@ -110,6 +119,7 @@ export function CreateLicenseDialog({ onLicenseCreated }: CreateLicenseDialogPro
         permissions: formData.permissions
           ? formData.permissions.split(',').map((p) => p.trim()).filter(Boolean)
           : undefined,
+        maxUses: formData.maxUses.trim() ? parseInt(formData.maxUses) : undefined,
         expiry: formData.expiry ? formData.expiry.toISOString() : undefined,
         metadata: {
           ...metadata.reduce((acc, kv) => {
@@ -136,19 +146,7 @@ export function CreateLicenseDialog({ onLicenseCreated }: CreateLicenseDialogPro
 
       toast.success('License created successfully')
       setOpen(false)
-      setFormData({
-        name: '',
-        policyId: '',
-        userId: '',
-        groupId: '',
-        key: '',
-        protected: true,
-        permissions: '',
-        expiry: undefined,
-      })
-      setMetadata([])
-      setSelectedUsers([])
-      setSelectedEntitlements([])
+      resetForm()
       onLicenseCreated?.()
     } catch (error: unknown) {
       handleFormError(error, 'License', {
@@ -157,6 +155,23 @@ export function CreateLicenseDialog({ onLicenseCreated }: CreateLicenseDialogPro
     } finally {
       setLoading(false)
     }
+  }
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      policyId: '',
+      userId: '',
+      groupId: '',
+      key: '',
+      protected: true,
+      permissions: '',
+      maxUses: '',
+      expiry: undefined,
+    })
+    setMetadata([])
+    setSelectedUsers([])
+    setSelectedEntitlements([])
   }
 
   const randomKey = () => {
@@ -174,7 +189,7 @@ export function CreateLicenseDialog({ onLicenseCreated }: CreateLicenseDialogPro
           Create License
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[720px]">
+      <DialogContent className="sm:max-w-[720px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>New License</DialogTitle>
           <DialogDescription>
@@ -193,7 +208,15 @@ export function CreateLicenseDialog({ onLicenseCreated }: CreateLicenseDialogPro
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="name">Name</Label>
+                    <div className="flex items-center gap-1">
+                      <Label htmlFor="name">Name</Label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="size-3.5 text-muted-foreground" />
+                        </TooltipTrigger>
+                        <TooltipContent>A human-readable label to help you identify this license</TooltipContent>
+                      </Tooltip>
+                    </div>
                     <span className="text-xs text-muted-foreground">Optional</span>
                   </div>
                   <Input
@@ -277,6 +300,25 @@ export function CreateLicenseDialog({ onLicenseCreated }: CreateLicenseDialogPro
                       </Tooltip>
                     </div>
                   </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1">
+                    <Label htmlFor="maxUses">Max Uses</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="size-3.5 text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent>Leave blank for unlimited uses</TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <Input
+                    id="maxUses"
+                    type="number"
+                    min="0"
+                    placeholder="Unlimited"
+                    value={formData.maxUses}
+                    onChange={(e) => setFormData({ ...formData, maxUses: e.target.value })}
+                  />
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <div className="flex items-center gap-1">
@@ -384,6 +426,17 @@ export function CreateLicenseDialog({ onLicenseCreated }: CreateLicenseDialogPro
                       ))}
                     </SelectContent>
                   </Select>
+                  {formData.policyId && (() => {
+                    const selectedPolicy = policies.find((p) => p.id === formData.policyId)
+                    const scheme = selectedPolicy?.attributes.scheme
+                    return (
+                      <p className="text-xs text-muted-foreground">
+                        {scheme
+                          ? `Offline-capable — signed with ${SCHEME_LABELS[scheme] || scheme}`
+                          : 'No signing scheme — this license cannot be checked out as an offline license file'}
+                      </p>
+                    )
+                  })()}
                 </div>
 
                 <div className="space-y-2">
@@ -549,7 +602,7 @@ export function CreateLicenseDialog({ onLicenseCreated }: CreateLicenseDialogPro
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              <Button type="button" variant="outline" onClick={() => { setOpen(false); resetForm() }}>
                 Cancel
               </Button>
               <Button type="submit" disabled={loading}>

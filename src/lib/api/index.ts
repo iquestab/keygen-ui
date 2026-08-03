@@ -11,6 +11,11 @@ import { WebhookResource } from './resources/webhooks';
 import { EventLogResource } from './resources/event-logs';
 import { PasswordResource } from './resources/passwords';
 import { SearchResource } from './resources/search';
+import { TokenResource } from './resources/tokens';
+import { PackageResource } from './resources/packages';
+import { ReleaseResource } from './resources/releases';
+import { ArtifactResource } from './resources/artifacts';
+import { ChannelResource } from './resources/channels';
 
 export class KeygenApi {
   public licenses: LicenseResource;
@@ -25,6 +30,11 @@ export class KeygenApi {
   public eventLogs: EventLogResource;
   public passwords: PasswordResource;
   public search: SearchResource;
+  public tokens: TokenResource;
+  public packages: PackageResource;
+  public releases: ReleaseResource;
+  public artifacts: ArtifactResource;
+  public channels: ChannelResource;
 
   constructor(private client: KeygenClient) {
     this.licenses = new LicenseResource(client);
@@ -39,6 +49,11 @@ export class KeygenApi {
     this.eventLogs = new EventLogResource(client);
     this.passwords = new PasswordResource(client);
     this.search = new SearchResource(client);
+    this.tokens = new TokenResource(client);
+    this.packages = new PackageResource(client);
+    this.releases = new ReleaseResource(client);
+    this.artifacts = new ArtifactResource(client);
+    this.channels = new ChannelResource(client);
   }
 
   /**
@@ -103,3 +118,8 @@ export { WebhookResource } from './resources/webhooks';
 export { EventLogResource } from './resources/event-logs';
 export { PasswordResource } from './resources/passwords';
 export { SearchResource } from './resources/search';
+export { TokenResource } from './resources/tokens';
+export { PackageResource } from './resources/packages';
+export { ReleaseResource } from './resources/releases';
+export { ArtifactResource } from './resources/artifacts';
+export { ChannelResource } from './resources/channels';

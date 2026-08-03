@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { HelpCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { handleFormError } from '@/lib/utils/error-handling'
 
@@ -62,21 +64,23 @@ export function CreateGroupDialog({
       }
 
       await api.groups.create(groupData)
-      
-      // Reset form
-      setFormData({
-        name: '',
-        maxLicenses: '',
-        maxMachines: '',
-        maxUsers: ''
-      })
-      
+
+      resetForm()
       onGroupCreated()
     } catch (error: unknown) {
       handleFormError(error, 'Group')
     } finally {
       setLoading(false)
     }
+  }
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      maxLicenses: '',
+      maxMachines: '',
+      maxUsers: ''
+    })
   }
 
   const handleInputChange = (field: string, value: string) => {
@@ -88,7 +92,7 @@ export function CreateGroupDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>Create Group</DialogTitle>
@@ -99,7 +103,15 @@ export function CreateGroupDialog({
           
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="name">Group Name *</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="name">Group Name *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>A human-readable label to help you identify this group</TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="name"
                 value={formData.name}
@@ -111,7 +123,15 @@ export function CreateGroupDialog({
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="maxLicenses">Max Licenses</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="maxLicenses">Max Licenses</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Caps how many licenses can belong to this group. Leave blank for unlimited.</TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="maxLicenses"
                 type="number"
@@ -124,7 +144,15 @@ export function CreateGroupDialog({
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="maxMachines">Max Machines</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="maxMachines">Max Machines</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Caps how many machines can belong to this group. Leave blank for unlimited.</TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="maxMachines"
                 type="number"
@@ -137,7 +165,15 @@ export function CreateGroupDialog({
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="maxUsers">Max Users</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="maxUsers">Max Users</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Caps how many users can belong to this group. Leave blank for unlimited.</TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="maxUsers"
                 type="number"
@@ -154,7 +190,7 @@ export function CreateGroupDialog({
             <Button
               type="button"
               variant="outline"
-              onClick={() => onOpenChange(false)}
+              onClick={() => { onOpenChange(false); resetForm() }}
               disabled={loading}
             >
               Cancel

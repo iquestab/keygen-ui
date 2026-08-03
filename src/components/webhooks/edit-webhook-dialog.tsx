@@ -13,6 +13,8 @@ import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { HelpCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { handleCrudError } from '@/lib/utils/error-handling'
 
@@ -41,16 +43,18 @@ export function EditWebhookDialog({
   // Group events by resource for better organization
   const eventGroups = api.webhooks.getEventsByCategory()
 
-  // Initialize form data when webhook changes
+  // Initialize form data when the dialog opens for a webhook — keyed on `open` as
+  // well as `webhook` so reopening after a cancelled edit doesn't show stale input
+  // (the parent passes the same object reference from the still-loaded list).
   useEffect(() => {
-    if (webhook) {
+    if (open && webhook) {
       setFormData({
         url: webhook.attributes.url,
         subscriptions: [...webhook.attributes.subscriptions],
         enabled: webhook.attributes.enabled
       })
     }
-  }, [webhook])
+  }, [open, webhook])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -95,7 +99,7 @@ export function EditWebhookDialog({
   const handleEventToggle = (event: string, checked: boolean) => {
     setFormData(prev => ({
       ...prev,
-      events: checked 
+      subscriptions: checked
         ? [...prev.subscriptions, event]
         : prev.subscriptions.filter(e => e !== event)
     }))
@@ -104,7 +108,7 @@ export function EditWebhookDialog({
   const handleSelectAllInGroup = (groupEvents: string[], checked: boolean) => {
     setFormData(prev => ({
       ...prev,
-      events: checked
+      subscriptions: checked
         ? [...new Set([...prev.subscriptions, ...groupEvents])]
         : prev.subscriptions.filter(e => !groupEvents.includes(e))
     }))
@@ -138,7 +142,15 @@ export function EditWebhookDialog({
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid gap-2">
-                  <Label htmlFor="url">Webhook URL *</Label>
+                  <div className="flex items-center gap-1">
+                    <Label htmlFor="url">Webhook URL *</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="size-3.5 text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent>The endpoint on your server that will receive event payloads via HTTP POST</TooltipContent>
+                    </Tooltip>
+                  </div>
                   <Input
                     id="url"
                     type="url"
@@ -161,6 +173,12 @@ export function EditWebhookDialog({
                     disabled={loading}
                   />
                   <Label htmlFor="enabled">Enable webhook</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>When off, the webhook is saved but won&apos;t receive any events until enabled</TooltipContent>
+                  </Tooltip>
                 </div>
               </CardContent>
             </Card>
@@ -168,7 +186,15 @@ export function EditWebhookDialog({
             {/* Event Selection */}
             <Card>
               <CardHeader>
-                <CardTitle>Event Subscriptions</CardTitle>
+                <div className="flex items-center gap-1">
+                  <CardTitle>Event Subscriptions</CardTitle>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>Only the events checked here will be delivered to this webhook&apos;s URL</TooltipContent>
+                  </Tooltip>
+                </div>
                 <CardDescription>
                   Select which events should trigger this webhook ({formData.subscriptions.length} selected)
                 </CardDescription>

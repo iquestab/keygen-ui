@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { getKeygenApi } from '@/lib/api';
 import { User } from '@/lib/types/keygen';
-import { handleAuthError } from '@/lib/utils/error-handling';
+import { handleAuthError, getUserFriendlyErrorMessage } from '@/lib/utils/error-handling';
 
 interface AuthContextType {
   user: User | null;
@@ -110,7 +110,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
     } catch (err: unknown) {
       handleAuthError(err);
-      setError('Login failed');
+      setError(getUserFriendlyErrorMessage(err, 'Login failed'));
       throw err;
     } finally {
       setLoading(false);

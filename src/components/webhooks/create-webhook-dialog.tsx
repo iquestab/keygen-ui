@@ -12,6 +12,8 @@ import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { HelpCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { handleFormError } from '@/lib/utils/error-handling'
 
@@ -68,19 +70,21 @@ export function CreateWebhookDialog({
         enabled: formData.enabled
       })
 
-      // Reset form
-      setFormData({
-        url: '',
-        subscriptions: [],
-        enabled: true
-      })
-      
+      resetForm()
       onWebhookCreated()
     } catch (error: unknown) {
       handleFormError(error, 'Webhook')
     } finally {
       setLoading(false)
     }
+  }
+
+  const resetForm = () => {
+    setFormData({
+      url: '',
+      subscriptions: [],
+      enabled: true
+    })
   }
 
   const handleEventToggle = (event: string, checked: boolean) => {
@@ -129,7 +133,15 @@ export function CreateWebhookDialog({
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid gap-2">
-                  <Label htmlFor="url">Webhook URL *</Label>
+                  <div className="flex items-center gap-1">
+                    <Label htmlFor="url">Webhook URL *</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="size-3.5 text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent>The endpoint on your server that will receive event payloads via HTTP POST</TooltipContent>
+                    </Tooltip>
+                  </div>
                   <Input
                     id="url"
                     type="url"
@@ -152,6 +164,12 @@ export function CreateWebhookDialog({
                     disabled={loading}
                   />
                   <Label htmlFor="enabled">Enable webhook immediately</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>When off, the webhook is saved but won&apos;t receive any events until enabled</TooltipContent>
+                  </Tooltip>
                 </div>
               </CardContent>
             </Card>
@@ -159,7 +177,15 @@ export function CreateWebhookDialog({
             {/* Event Selection */}
             <Card>
               <CardHeader>
-                <CardTitle>Event Subscriptions</CardTitle>
+                <div className="flex items-center gap-1">
+                  <CardTitle>Event Subscriptions</CardTitle>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>Only the events checked here will be delivered to this webhook&apos;s URL</TooltipContent>
+                  </Tooltip>
+                </div>
                 <CardDescription>
                   Select which events should trigger this webhook ({formData.subscriptions.length} selected)
                 </CardDescription>
@@ -219,7 +245,7 @@ export function CreateWebhookDialog({
             <Button
               type="button"
               variant="outline"
-              onClick={() => onOpenChange(false)}
+              onClick={() => { onOpenChange(false); resetForm() }}
               disabled={loading}
             >
               Cancel

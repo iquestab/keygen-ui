@@ -22,7 +22,8 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { Plus, X, Shield, Unlock, Lock } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Plus, X, Shield, Unlock, Lock, HelpCircle } from 'lucide-react'
 import { getKeygenApi } from '@/lib/api'
 import { toast } from 'sonner'
 import { handleFormError } from '@/lib/utils/error-handling'
@@ -140,7 +141,7 @@ export function CreateProductDialog({ onProductCreated }: CreateProductDialogPro
           Create Product
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[525px]">
+      <DialogContent className="sm:max-w-[525px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New Product</DialogTitle>
           <DialogDescription>
@@ -150,7 +151,15 @@ export function CreateProductDialog({ onProductCreated }: CreateProductDialogPro
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Product Name *</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="name">Product Name *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>The display name for this product, shown throughout the dashboard</TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="name"
                 placeholder="My Awesome Product"
@@ -160,7 +169,15 @@ export function CreateProductDialog({ onProductCreated }: CreateProductDialogPro
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="code">Code</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="code">Code</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>A unique, URL-safe identifier for this product, used to reference it programmatically</TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="code"
                 placeholder="my-awesome-product"
@@ -174,7 +191,15 @@ export function CreateProductDialog({ onProductCreated }: CreateProductDialogPro
           </div>
 
           <div className="space-y-2">
-              <Label htmlFor="strategy">Distribution Strategy</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="strategy">Distribution Strategy</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Licensed requires a valid license to use; Open is freely available to anyone; Closed restricts access entirely</TooltipContent>
+                </Tooltip>
+              </div>
               <Select
                 value={formData.distributionStrategy}
                 onValueChange={(value: 'LICENSED' | 'OPEN' | 'CLOSED') => setFormData({ ...formData, distributionStrategy: value })}
@@ -207,7 +232,15 @@ export function CreateProductDialog({ onProductCreated }: CreateProductDialogPro
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="url">Product URL</Label>
+            <div className="flex items-center gap-1">
+              <Label htmlFor="url">Product URL</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="size-3.5 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent>Website or documentation URL for this product (optional)</TooltipContent>
+              </Tooltip>
+            </div>
             <Input
               id="url"
               type="url"
@@ -218,7 +251,15 @@ export function CreateProductDialog({ onProductCreated }: CreateProductDialogPro
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="platforms">Platforms</Label>
+            <div className="flex items-center gap-1">
+              <Label htmlFor="platforms">Platforms</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="size-3.5 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent>The platforms this product supports (e.g. Windows, macOS). Press Enter or click Add after each one.</TooltipContent>
+              </Tooltip>
+            </div>
             <div className="space-y-2">
               <div className="flex gap-2">
                 <Input
@@ -252,7 +293,15 @@ export function CreateProductDialog({ onProductCreated }: CreateProductDialogPro
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="metadata">Metadata (JSON)</Label>
+            <div className="flex items-center gap-1">
+              <Label htmlFor="metadata">Metadata (JSON)</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="size-3.5 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent>Freeform JSON object for your own custom tracking data</TooltipContent>
+              </Tooltip>
+            </div>
             <Textarea
               id="metadata"
               placeholder='{&quot;version&quot;: &quot;1.0.0&quot;, &quot;description&quot;: &quot;Product description&quot;}'

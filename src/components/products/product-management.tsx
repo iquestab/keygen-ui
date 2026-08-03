@@ -47,6 +47,19 @@ import { handleLoadError } from '@/lib/utils/error-handling'
 import { CreateProductDialog } from './create-product-dialog'
 import { EditProductDialog } from './edit-product-dialog'
 import { DeleteProductDialog } from './delete-product-dialog'
+import { PaginationControls } from '@/components/shared/pagination-controls'
+
+const DEFAULT_PAGE_SIZE = 25
+const SEARCH_DEBOUNCE_MS = 300
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedValue(value), delay)
+    return () => clearTimeout(timer)
+  }, [value, delay])
+  return debouncedValue
+}
 
 export function ProductManagement() {
   const [products, setProducts] = useState<Product[]>([])
@@ -59,31 +72,88 @@ export function ProductManagement() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const api = getKeygenApi()
 
-  const loadProducts = useCallback(async () => {
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE)
+  const [totalCount, setTotalCount] = useState(0)
+
+  // Search state
+  const [isSearchMode, setIsSearchMode] = useState(false)
+  const debouncedSearch = useDebounce(searchTerm, SEARCH_DEBOUNCE_MS)
+
+  const buildSearchQuery = useCallback((term: string) => {
+    const query: Record<string, string> = {}
+    if (term.length < 3) return query
+
+    query.name = term
+
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-/i
+    if (uuidPattern.test(term)) {
+      query.id = term
+    }
+
+    // Speculative — harmless with OR if not actually searchable
+    query.code = term
+
+    return query
+  }, [])
+
+  const loadData = useCallback(async () => {
     try {
       setLoading(true)
-      const response = await api.products.list({ limit: 50 })
-      setProducts(response.data || [])
+      const searchQuery = debouncedSearch ? buildSearchQuery(debouncedSearch) : null
+      const hasValidSearch = searchQuery && Object.keys(searchQuery).length > 0
+
+      if (hasValidSearch) {
+        setIsSearchMode(true)
+        const response = await api.search.search<Product>({
+          type: 'products',
+          query: searchQuery,
+          op: 'OR',
+          page: { size: pageSize, number: currentPage },
+        })
+        setProducts(response.data || [])
+        setTotalCount(response.meta?.count ?? (response.data?.length || 0))
+      } else {
+        setIsSearchMode(false)
+        const response = await api.products.list({
+          page: { size: pageSize, number: currentPage },
+        })
+        setProducts(response.data || [])
+        setTotalCount(response.meta?.count ?? (response.data?.length || 0))
+      }
     } catch (error: unknown) {
       handleLoadError(error, 'products')
     } finally {
       setLoading(false)
     }
-  }, [api.products])
+  }, [api.products, api.search, pageSize, currentPage, debouncedSearch, buildSearchQuery])
 
   useEffect(() => {
-    loadProducts()
-  }, [loadProducts])
+    loadData()
+  }, [loadData])
 
+  // Reset to page 1 when filters or search change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [strategyFilter, pageSize, debouncedSearch])
+
+  // After creating a product, jump to page 1 — newly created records are
+  // returned first (reverse-chronological order), so this is where the new
+  // product will be. If we're already on page 1, force a reload explicitly
+  // instead of relying on the page-reset effect above.
+  const handleProductCreated = useCallback(() => {
+    if (currentPage !== 1) {
+      setCurrentPage(1)
+    } else {
+      loadData()
+    }
+  }, [currentPage, loadData])
+
+  // Strategy filter applied client-side on top of the properly paginated page,
+  // since distributionStrategy isn't a confirmed server-searchable field.
   const filteredProducts = products.filter(product => {
-    const matchesSearch = !searchTerm || 
-      product.attributes.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.attributes.code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.attributes.url?.toLowerCase().includes(searchTerm.toLowerCase())
-    
-    const matchesStrategy = strategyFilter === 'all' || product.attributes.distributionStrategy === strategyFilter
-    
-    return matchesSearch && matchesStrategy
+    return strategyFilter === 'all' || product.attributes.distributionStrategy === strategyFilter
   })
 
   const getStrategyColor = (strategy: string) => {
@@ -144,7 +214,7 @@ export function ProductManagement() {
             Manage your software products and distribution strategies
           </p>
         </div>
-        <CreateProductDialog onProductCreated={loadProducts} />
+        <CreateProductDialog onProductCreated={handleProductCreated} />
       </div>
 
       {/* Stats Cards */}
@@ -155,9 +225,9 @@ export function ProductManagement() {
             <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{products.length}</div>
+            <div className="text-2xl font-bold">{totalCount}</div>
             <p className="text-xs text-muted-foreground">
-              Registered products
+              {isSearchMode ? 'Matching search' : 'Registered products'}
             </p>
           </CardContent>
         </Card>
@@ -354,7 +424,17 @@ export function ProductManagement() {
               </TableBody>
             </Table>
           )}
-          
+
+          {!loading && (
+            <PaginationControls
+              currentPage={currentPage}
+              pageSize={pageSize}
+              totalCount={totalCount}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+            />
+          )}
+
           {!loading && filteredProducts.length === 0 && (
             <div className="flex items-center justify-center h-32">
               <div className="text-center">
@@ -377,7 +457,7 @@ export function ProductManagement() {
         product={editProduct}
         open={editDialogOpen}
         onOpenChange={setEditDialogOpen}
-        onProductUpdated={loadProducts}
+        onProductUpdated={loadData}
       />
 
       {/* Delete Product Dialog */}
@@ -385,7 +465,7 @@ export function ProductManagement() {
         product={deleteProduct}
         open={deleteDialogOpen}
         onOpenChange={setDeleteDialogOpen}
-        onProductDeleted={loadProducts}
+        onProductDeleted={loadData}
       />
     </div>
   )

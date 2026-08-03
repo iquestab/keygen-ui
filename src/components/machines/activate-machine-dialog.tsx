@@ -20,7 +20,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Plus } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Plus, HelpCircle } from 'lucide-react'
 import { getKeygenApi } from '@/lib/api'
 import { License } from '@/lib/types/keygen'
 import { handleFormError, handleLoadError } from '@/lib/utils/error-handling'
@@ -55,8 +56,8 @@ export function ActivateMachineDialog({ onMachineActivated }: ActivateMachineDia
         limit: 100,
         // Only get active licenses
       })
-      setLicenses(licensesResponse.data?.filter(license => 
-        license.attributes.status === 'active'
+      setLicenses(licensesResponse.data?.filter(license =>
+        license.attributes.status.toLowerCase() === 'active'
       ) || [])
     } catch (error: unknown) {
       handleLoadError(error, 'licenses')
@@ -124,7 +125,7 @@ export function ActivateMachineDialog({ onMachineActivated }: ActivateMachineDia
           Activate Machine
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[525px]">
+      <DialogContent className="sm:max-w-[525px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Activate New Machine</DialogTitle>
           <DialogDescription>
@@ -139,7 +140,15 @@ export function ActivateMachineDialog({ onMachineActivated }: ActivateMachineDia
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2 col-span-2">
-              <Label htmlFor="fingerprint">Machine Fingerprint *</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="fingerprint">Machine Fingerprint *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>A unique, stable identifier for this device (e.g. a hardware ID or generated UUID) — used to tell machines apart under the same license</TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="fingerprint"
                 placeholder="e.g., 1A2B3C4D5E6F7G8H9I0J"
@@ -152,7 +161,15 @@ export function ActivateMachineDialog({ onMachineActivated }: ActivateMachineDia
               </p>
             </div>
             <div className="space-y-2 col-span-2">
-              <Label htmlFor="license">License *</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="license">License *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>The license this machine will be activated against and count toward</TooltipContent>
+                </Tooltip>
+              </div>
               <Select
                 value={formData.licenseId}
                 onValueChange={(value) => setFormData({ ...formData, licenseId: value })}
@@ -179,7 +196,15 @@ export function ActivateMachineDialog({ onMachineActivated }: ActivateMachineDia
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Machine Name</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="name">Machine Name</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>A friendly label to help you recognize this machine in lists (optional)</TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="name"
                 placeholder="e.g., John's Workstation"
@@ -188,7 +213,15 @@ export function ActivateMachineDialog({ onMachineActivated }: ActivateMachineDia
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="platform">Platform</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="platform">Platform</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>The operating system this machine is running (optional, informational only)</TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="platform"
                 placeholder="e.g., Windows, macOS, Linux"
@@ -200,7 +233,15 @@ export function ActivateMachineDialog({ onMachineActivated }: ActivateMachineDia
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="hostname">Hostname</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="hostname">Hostname</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>The machine&apos;s network hostname (optional, informational only)</TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="hostname"
                 placeholder="e.g., DESKTOP-ABC123"
@@ -209,7 +250,15 @@ export function ActivateMachineDialog({ onMachineActivated }: ActivateMachineDia
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="cores">CPU Cores</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="cores">CPU Cores</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Number of CPU cores on this machine — useful if the policy enforces core-based limits</TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="cores"
                 type="number"
@@ -221,7 +270,15 @@ export function ActivateMachineDialog({ onMachineActivated }: ActivateMachineDia
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="ip">IP Address</Label>
+            <div className="flex items-center gap-1">
+              <Label htmlFor="ip">IP Address</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="size-3.5 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent>The machine&apos;s IP address at activation time (optional, informational only)</TooltipContent>
+              </Tooltip>
+            </div>
             <Input
               id="ip"
               placeholder="e.g., 192.168.1.100"

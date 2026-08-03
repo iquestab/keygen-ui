@@ -17,6 +17,19 @@ import { CreateGroupDialog } from './create-group-dialog'
 import { EditGroupDialog } from './edit-group-dialog'
 import { DeleteGroupDialog } from './delete-group-dialog'
 import { GroupDetailsDialog } from './group-details-dialog'
+import { PaginationControls } from '@/components/shared/pagination-controls'
+
+const DEFAULT_PAGE_SIZE = 25
+const SEARCH_DEBOUNCE_MS = 300
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedValue(value), delay)
+    return () => clearTimeout(timer)
+  }, [value, delay])
+  return debouncedValue
+}
 
 export function GroupManagement() {
   const [groups, setGroups] = useState<Group[]>([])
@@ -27,23 +40,71 @@ export function GroupManagement() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false)
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null)
-  
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE)
+  const [totalCount, setTotalCount] = useState(0)
+
+  // Search state
+  const [isSearchMode, setIsSearchMode] = useState(false)
+  const debouncedSearch = useDebounce(searchTerm, SEARCH_DEBOUNCE_MS)
+
   const api = getKeygenApi()
 
-  const loadGroups = useCallback(async () => {
+  const buildSearchQuery = useCallback((term: string) => {
+    const query: Record<string, string> = {}
+    if (term.length < 3) return query
+
+    query.name = term
+
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-/i
+    if (uuidPattern.test(term)) {
+      query.id = term
+    }
+
+    return query
+  }, [])
+
+  const loadData = useCallback(async () => {
     try {
-      const response = await api.groups.list({ limit: 100 })
-      setGroups(response.data || [])
+      setLoading(true)
+      const searchQuery = debouncedSearch ? buildSearchQuery(debouncedSearch) : null
+      const hasValidSearch = searchQuery && Object.keys(searchQuery).length > 0
+
+      if (hasValidSearch) {
+        setIsSearchMode(true)
+        const response = await api.search.search<Group>({
+          type: 'groups',
+          query: searchQuery,
+          op: 'OR',
+          page: { size: pageSize, number: currentPage },
+        })
+        setGroups(response.data || [])
+        setTotalCount(response.meta?.count ?? (response.data?.length || 0))
+      } else {
+        setIsSearchMode(false)
+        const response = await api.groups.list({
+          page: { size: pageSize, number: currentPage },
+        })
+        setGroups(response.data || [])
+        setTotalCount(response.meta?.count ?? (response.data?.length || 0))
+      }
     } catch (error: unknown) {
       handleLoadError(error, 'groups')
     } finally {
       setLoading(false)
     }
-  }, [api.groups])
+  }, [api.groups, api.search, pageSize, currentPage, debouncedSearch, buildSearchQuery])
 
   useEffect(() => {
-    loadGroups()
-  }, [loadGroups])
+    loadData()
+  }, [loadData])
+
+  // Reset to page 1 when search changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [pageSize, debouncedSearch])
 
   const handleEdit = (group: Group) => {
     setSelectedGroup(group)
@@ -62,27 +123,35 @@ export function GroupManagement() {
 
   const handleGroupCreated = () => {
     setCreateDialogOpen(false)
-    loadGroups()
+    // Jump to page 1 — newly created records are returned first (reverse-
+    // chronological order), so this is where the new group will be. If we're
+    // already on page 1, the page-number state won't change, so force a
+    // reload explicitly instead of relying on the page-reset effect above.
+    if (currentPage !== 1) {
+      setCurrentPage(1)
+    } else {
+      loadData()
+    }
     toast.success('Group created successfully')
   }
 
   const handleGroupUpdated = () => {
     setEditDialogOpen(false)
     setSelectedGroup(null)
-    loadGroups()
+    loadData()
     toast.success('Group updated successfully')
   }
 
   const handleGroupDeleted = () => {
     setDeleteDialogOpen(false)
     setSelectedGroup(null)
-    loadGroups()
+    loadData()
     toast.success('Group deleted successfully')
   }
 
-  const filteredGroups = groups.filter(group => 
-    group.attributes.name.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  // `groups` is already the current server page (and, in search mode, the matching
+  // set) — no further client-side name filtering needed on top of it.
+  const filteredGroups = groups
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -132,10 +201,10 @@ export function GroupManagement() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
-            Groups ({filteredGroups.length})
+            Groups ({totalCount})
           </CardTitle>
           <CardDescription>
-            Manage your groups and their configurations
+            {isSearchMode ? 'Matching search' : 'Manage your groups and their configurations'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -221,6 +290,16 @@ export function GroupManagement() {
                 )}
               </TableBody>
             </Table>
+          )}
+
+          {!loading && (
+            <PaginationControls
+              currentPage={currentPage}
+              pageSize={pageSize}
+              totalCount={totalCount}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+            />
           )}
         </CardContent>
       </Card>

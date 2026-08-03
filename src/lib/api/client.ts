@@ -59,7 +59,16 @@ export class KeygenClient {
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
-          if (typeof value === 'object') {
+          if (Array.isArray(value)) {
+            // Rack/Rails array convention: repeat the key with empty brackets
+            // (e.g. roles[]=admin&roles[]=user) — a bare repeated key without
+            // brackets gets collapsed to the last value by this API.
+            value.forEach((item) => {
+              if (item !== undefined && item !== null) {
+                searchParams.append(`${key}[]`, String(item));
+              }
+            });
+          } else if (typeof value === 'object') {
             // Handle nested objects like page[size], date[start], etc.
             Object.entries(value).forEach(([nestedKey, nestedValue]) => {
               if (nestedValue !== undefined && nestedValue !== null) {
@@ -199,9 +208,8 @@ export class KeygenClient {
       : `/accounts/${this.config.accountId}`
 
     if (endpoint.startsWith('/')) {
-      // Absolute endpoint (e.g., '/tokens', '/me')
-      if (endpoint.startsWith('/v1') || endpoint === '/me') {
-        // e.g., '/me' → proxy: /api/keygen/me, direct: {apiUrl}/me
+      // Absolute endpoint (e.g., '/v1/...')
+      if (endpoint.startsWith('/v1')) {
         if (isBrowser) {
           // Strip /v1 prefix if present since proxy already targets the API base
           const path = endpoint.startsWith('/v1') ? endpoint.slice(3) : endpoint
@@ -209,7 +217,7 @@ export class KeygenClient {
         }
         return `${this.config.apiUrl}${endpoint}`
       }
-      // e.g., '/tokens' → proxy: /api/keygen/accounts/{id}/tokens
+      // e.g., '/tokens', '/me' → proxy: /api/keygen/accounts/{id}/tokens
       if (isBrowser) {
         return `${proxyBase}${accountPrefix}${endpoint}`
       }
@@ -231,7 +239,9 @@ export class KeygenClient {
    * Authenticate with email and password to get a token
    */
   async authenticate(email: string, password: string, tokenName = 'Keygen UI Token'): Promise<string> {
-    const credentials = Buffer.from(`${email}:${password}`).toString('base64');
+    // btoa/unescape/encodeURIComponent handles UTF-8 credentials correctly in the browser,
+    // where this method always runs — there is no Node Buffer global here.
+    const credentials = btoa(unescape(encodeURIComponent(`${email}:${password}`)));
 
     const response = await this.request<{ attributes: { token: string } }>('/tokens', {
       method: 'POST',

@@ -18,6 +18,9 @@ import { CreateWebhookDialog } from './create-webhook-dialog'
 import { EditWebhookDialog } from './edit-webhook-dialog'
 import { DeleteWebhookDialog } from './delete-webhook-dialog'
 import { WebhookDetailsDialog } from './webhook-details-dialog'
+import { PaginationControls } from '@/components/shared/pagination-controls'
+
+const DEFAULT_PAGE_SIZE = 25
 
 export function WebhookManagement() {
   const [webhooks, setWebhooks] = useState<Webhook[]>([])
@@ -29,23 +32,39 @@ export function WebhookManagement() {
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false)
   const [selectedWebhook, setSelectedWebhook] = useState<Webhook | null>(null)
   const [togglingWebhooks, setTogglingWebhooks] = useState<Set<string>>(new Set())
-  
+
+  // Pagination state — webhooks aren't a server-searchable resource in Keygen's
+  // /search API, so this page only paginates; the search box below filters
+  // whatever page is currently loaded, not the whole account.
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE)
+  const [totalCount, setTotalCount] = useState(0)
+
   const api = getKeygenApi()
 
   const loadWebhooks = useCallback(async () => {
     try {
-      const response = await api.webhooks.list({ limit: 100 })
+      setLoading(true)
+      const response = await api.webhooks.list({
+        page: { size: pageSize, number: currentPage },
+      })
       setWebhooks(response.data || [])
+      setTotalCount(response.meta?.count ?? (response.data?.length || 0))
     } catch (error: unknown) {
       handleLoadError(error, 'webhooks')
     } finally {
       setLoading(false)
     }
-  }, [api.webhooks])
+  }, [api.webhooks, pageSize, currentPage])
 
   useEffect(() => {
     loadWebhooks()
   }, [loadWebhooks])
+
+  // Reset to page 1 when page size changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [pageSize])
 
   const handleToggleWebhook = async (webhook: Webhook) => {
     setTogglingWebhooks(prev => new Set(prev).add(webhook.id))
@@ -100,7 +119,15 @@ export function WebhookManagement() {
 
   const handleWebhookCreated = () => {
     setCreateDialogOpen(false)
-    loadWebhooks()
+    // Jump to page 1 — newly created records are returned first (reverse-
+    // chronological order), so this is where the new webhook will be. If
+    // we're already on page 1, the page-number state won't change, so force a
+    // reload explicitly instead of relying on the page-size-reset effect.
+    if (currentPage !== 1) {
+      setCurrentPage(1)
+    } else {
+      loadWebhooks()
+    }
     toast.success('Webhook created successfully')
   }
 
@@ -150,14 +177,14 @@ export function WebhookManagement() {
       {/* Search */}
       <Card>
         <CardHeader>
-          <CardTitle>Search Webhooks</CardTitle>
-          <CardDescription>Find webhooks by URL or events</CardDescription>
+          <CardTitle>Filter Current Page</CardTitle>
+          <CardDescription>Filter the loaded webhooks by URL or events (does not search other pages)</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-center space-x-2">
             <Search className="h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search webhooks..."
+              placeholder="Filter current page..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="flex-1"
@@ -171,7 +198,7 @@ export function WebhookManagement() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <WebhookIcon className="h-5 w-5" />
-            Webhooks ({filteredWebhooks.length})
+            Webhooks ({totalCount})
           </CardTitle>
           <CardDescription>
             Manage webhook endpoints and event subscriptions
@@ -290,6 +317,16 @@ export function WebhookManagement() {
                 )}
               </TableBody>
             </Table>
+          )}
+
+          {!loading && (
+            <PaginationControls
+              currentPage={currentPage}
+              pageSize={pageSize}
+              totalCount={totalCount}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+            />
           )}
         </CardContent>
       </Card>

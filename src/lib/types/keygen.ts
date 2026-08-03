@@ -66,6 +66,20 @@ export interface AuthTokenResponse {
   };
 }
 
+// Token (API key)
+export interface Token extends KeygenResource {
+  type: 'tokens';
+  attributes: {
+    kind: string; // e.g. 'user-token', 'admin-token'
+    token?: string; // raw secret — only ever present in the create/regenerate response
+    name?: string;
+    expiry: string | null;
+    permissions?: string[];
+    created: string;
+    updated: string;
+  };
+}
+
 // User
 export interface User extends KeygenResource {
   type: 'users';
@@ -78,6 +92,7 @@ export interface User extends KeygenResource {
     status: 'active' | 'inactive' | 'banned';
     banned?: boolean; // Legacy property for backward compatibility
     lastSignedInAt?: string;
+    metadata?: Record<string, unknown>;
     created: string;
     updated: string;
   };
@@ -101,6 +116,8 @@ export interface License extends KeygenResource {
     metadata?: Record<string, unknown>;
     created: string;
     updated: string;
+    // Only present in the response of a license check-out (offline license file) action
+    certificate?: string;
   };
 }
 
@@ -179,6 +196,7 @@ export interface Policy extends KeygenResource {
     machineLeasingStrategy: 'PER_MACHINE' | 'PER_USER' | 'ALL_MACHINES';
     processLeasingStrategy: 'PER_MACHINE' | 'PER_LICENSE' | 'ALL_PROCESSES';
     overageStrategy: 'NO_OVERAGE' | 'ALLOW_1_25X_OVERAGE' | 'ALLOW_1_5X_OVERAGE' | 'ALLOW_2X_OVERAGE' | 'ALWAYS_ALLOW_OVERAGE';
+    scheme: 'ED25519_SIGN' | 'RSA_2048_PKCS1_ENCRYPT' | 'RSA_2048_PKCS1_SIGN' | 'RSA_2048_PKCS1_PSS_SIGN' | 'RSA_2048_JWT_RS256' | null;
     metadata: Record<string, unknown>;
     created: string;
     updated: string;
@@ -272,6 +290,72 @@ export interface Webhook extends KeygenResource {
   };
 }
 
+// Package
+export interface Package extends KeygenResource {
+  type: 'packages';
+  attributes: {
+    name?: string;
+    key: string;
+    engine?: 'pypi' | 'npm' | 'rubygems' | 'tauri' | 'oci' | 'raw' | null;
+    metadata?: Record<string, unknown>;
+    created: string;
+    updated: string;
+  };
+}
+
+// Release
+export interface Release extends KeygenResource {
+  type: 'releases';
+  attributes: {
+    name?: string;
+    version: string;
+    channel: 'stable' | 'rc' | 'beta' | 'alpha' | 'dev';
+    status: 'DRAFT' | 'PUBLISHED' | 'YANKED';
+    tag?: string;
+    description?: string;
+    semver?: {
+      major: number;
+      minor: number;
+      patch: number;
+      prerelease?: string[];
+      build?: string[];
+    };
+    metadata?: Record<string, unknown>;
+    backdated?: string | null;
+    created: string;
+    updated: string;
+  };
+}
+
+// Artifact
+export interface Artifact extends KeygenResource {
+  type: 'artifacts';
+  attributes: {
+    filename: string;
+    filetype: string;
+    filesize?: number;
+    platform?: string;
+    arch?: string;
+    status: 'WAITING' | 'UPLOADED' | 'FAILED';
+    signature?: string;
+    checksum?: string;
+    metadata?: Record<string, unknown>;
+    created: string;
+    updated: string;
+  };
+}
+
+// Channel (read-only, derived from releases/artifacts)
+export interface Channel extends KeygenResource {
+  type: 'channels';
+  attributes: {
+    name: string;
+    key: string;
+    created: string;
+    updated: string;
+  };
+}
+
 // API Request options
 export interface ApiRequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
@@ -334,6 +418,7 @@ export interface MachineFilters extends PaginationOptions {
 export interface UserFilters extends PaginationOptions {
   email?: string;
   role?: User['attributes']['role'];
+  roles?: User['attributes']['role'][];
   status?: User['attributes']['status'];
 }
 
@@ -365,3 +450,26 @@ export interface WebhookFilters extends PaginationOptions {
   url?: string;
   subscriptions?: string[];
 }
+
+export interface PackageFilters extends PaginationOptions {
+  product?: string;
+}
+
+export interface ReleaseFilters extends PaginationOptions {
+  product?: string;
+  package?: string;
+  status?: Release['attributes']['status'];
+  channel?: Release['attributes']['channel'];
+}
+
+export interface ArtifactFilters extends PaginationOptions {
+  release?: string;
+  product?: string;
+  channel?: string;
+  filetype?: string;
+  platform?: string;
+  arch?: string;
+  status?: Artifact['attributes']['status'];
+}
+
+export type ChannelFilters = PaginationOptions;

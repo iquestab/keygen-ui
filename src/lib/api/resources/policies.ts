@@ -1,5 +1,9 @@
 import { KeygenClient } from '../client';
-import { Policy, KeygenResponse, ListOptions, KeygenListResponse } from '../../types/keygen';
+import { Policy, KeygenResponse, PaginationOptions, KeygenListResponse } from '../../types/keygen';
+
+export interface PolicyFilters extends PaginationOptions {
+  name?: string;
+}
 
 export class PolicyResource {
   constructor(private client: KeygenClient) {}
@@ -7,16 +11,14 @@ export class PolicyResource {
   /**
    * List all policies
    */
-  async list(options?: ListOptions): Promise<KeygenListResponse<Policy>> {
-    const queryParams = new URLSearchParams();
-    
-    if (options?.limit) queryParams.set('limit', options.limit.toString());
-    if (options?.page) queryParams.set('page', options.page.toString());
-    
-    const query = queryParams.toString();
-    const endpoint = query ? `/policies?${query}` : '/policies';
-    
-    return this.client.request<Policy[]>(endpoint);
+  async list(filters: PolicyFilters = {}): Promise<KeygenListResponse<Policy>> {
+    const params = {
+      ...this.client.buildPaginationParams(filters),
+    };
+
+    if (filters.name) params.name = filters.name;
+
+    return this.client.request<Policy[]>('/policies', { params });
   }
 
   /**
@@ -52,6 +54,9 @@ export class PolicyResource {
     machineLeasingStrategy?: 'PER_LICENSE' | 'PER_USER' | 'ALWAYS_ALLOW';
     processLeasingStrategy?: 'PER_MACHINE' | 'PER_LICENSE' | 'PER_USER' | 'ALWAYS_ALLOW';
     overageStrategy?: 'NO_OVERAGE' | 'ALWAYS_ALLOW_OVERAGE' | 'ALLOW_1_25X_OVERAGE' | 'ALLOW_1_5X_OVERAGE' | 'ALLOW_2X_OVERAGE';
+    // Cryptographic signing scheme used for offline license/machine files. Immutable
+    // after creation, so this is only accepted here — not in update().
+    scheme?: 'ED25519_SIGN' | 'RSA_2048_PKCS1_ENCRYPT' | 'RSA_2048_PKCS1_SIGN' | 'RSA_2048_PKCS1_PSS_SIGN' | 'RSA_2048_JWT_RS256';
     metadata?: Record<string, unknown>;
   }): Promise<KeygenResponse<Policy>> {
     const { productId, ...attributes } = data;

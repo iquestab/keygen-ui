@@ -34,7 +34,10 @@ export function LoginForm({
 
     try {
       await login(email, password)
-      router.push("/dashboard")
+      // Read the redirect target directly from the URL rather than useSearchParams(),
+      // which would force this page out of static rendering behind a Suspense boundary.
+      const redirect = new URLSearchParams(window.location.search).get("redirect")
+      router.push(redirect && redirect.startsWith("/") ? redirect : "/dashboard")
     } catch {
       // Error is handled by auth context
     }
