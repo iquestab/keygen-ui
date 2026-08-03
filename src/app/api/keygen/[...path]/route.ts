@@ -20,6 +20,7 @@ const ALLOWED_PATH_SEGMENTS = new Set([
   'request-logs',
   'event-logs',
   'passwords',
+  'packages',
   'releases',
   'artifacts',
   'platforms',
@@ -85,12 +86,27 @@ async function proxyRequest(request: NextRequest, path: string[]) {
     }
   }
 
+  // Keygen responds to artifact creation with a 307 redirect to a pre-signed S3
+  // upload URL rather than a JSON body. Browser `fetch` can't read a `Location`
+  // header off a cross-origin redirect (it comes back as an opaque-redirect
+  // response), so we follow it manually here on the server and hand the browser
+  // a normal 200 JSON response with the upload URL instead.
+  const isArtifactUpload = request.method === 'POST' && path.length === 1 && path[0] === 'artifacts'
+
   try {
     const response = await fetchKeygen(targetUrl, {
       method: request.method,
       headers,
       body,
+      redirect: isArtifactUpload ? 'manual' : 'follow',
     })
+
+    if (isArtifactUpload && response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location')
+      if (location) {
+        return NextResponse.json({ data: null, meta: { uploadUrl: location } }, { status: 200 })
+      }
+    }
 
     const data = await response.text()
 

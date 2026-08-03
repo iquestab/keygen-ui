@@ -290,6 +290,72 @@ export interface Webhook extends KeygenResource {
   };
 }
 
+// Package
+export interface Package extends KeygenResource {
+  type: 'packages';
+  attributes: {
+    name?: string;
+    key: string;
+    engine?: 'pypi' | 'npm' | 'rubygems' | 'tauri' | 'oci' | 'raw' | null;
+    metadata?: Record<string, unknown>;
+    created: string;
+    updated: string;
+  };
+}
+
+// Release
+export interface Release extends KeygenResource {
+  type: 'releases';
+  attributes: {
+    name?: string;
+    version: string;
+    channel: 'stable' | 'rc' | 'beta' | 'alpha' | 'dev';
+    status: 'DRAFT' | 'PUBLISHED' | 'YANKED';
+    tag?: string;
+    description?: string;
+    semver?: {
+      major: number;
+      minor: number;
+      patch: number;
+      prerelease?: string[];
+      build?: string[];
+    };
+    metadata?: Record<string, unknown>;
+    backdated?: string | null;
+    created: string;
+    updated: string;
+  };
+}
+
+// Artifact
+export interface Artifact extends KeygenResource {
+  type: 'artifacts';
+  attributes: {
+    filename: string;
+    filetype: string;
+    filesize?: number;
+    platform?: string;
+    arch?: string;
+    status: 'WAITING' | 'UPLOADED' | 'FAILED';
+    signature?: string;
+    checksum?: string;
+    metadata?: Record<string, unknown>;
+    created: string;
+    updated: string;
+  };
+}
+
+// Channel (read-only, derived from releases/artifacts)
+export interface Channel extends KeygenResource {
+  type: 'channels';
+  attributes: {
+    name: string;
+    key: string;
+    created: string;
+    updated: string;
+  };
+}
+
 // API Request options
 export interface ApiRequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
@@ -384,3 +450,26 @@ export interface WebhookFilters extends PaginationOptions {
   url?: string;
   subscriptions?: string[];
 }
+
+export interface PackageFilters extends PaginationOptions {
+  product?: string;
+}
+
+export interface ReleaseFilters extends PaginationOptions {
+  product?: string;
+  package?: string;
+  status?: Release['attributes']['status'];
+  channel?: Release['attributes']['channel'];
+}
+
+export interface ArtifactFilters extends PaginationOptions {
+  release?: string;
+  product?: string;
+  channel?: string;
+  filetype?: string;
+  platform?: string;
+  arch?: string;
+  status?: Artifact['attributes']['status'];
+}
+
+export type ChannelFilters = PaginationOptions;

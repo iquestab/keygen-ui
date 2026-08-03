@@ -12,6 +12,9 @@ import {
   IconUsersGroup,
   IconShieldCheck,
   IconWebhook,
+  IconBox,
+  IconRocket,
+  IconGitBranch,
 } from "@tabler/icons-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -48,6 +51,21 @@ const data = {
       title: "Products",
       url: "/products",
       icon: IconPackage,
+    },
+    {
+      title: "Packages",
+      url: "/packages",
+      icon: IconBox,
+    },
+    {
+      title: "Releases",
+      url: "/releases",
+      icon: IconRocket,
+    },
+    {
+      title: "Channels",
+      url: "/channels",
+      icon: IconGitBranch,
     },
     {
       title: "Policies",

@@ -30,12 +30,20 @@ export function getAccountPathPrefix(): string {
  */
 export async function fetchKeygen(
   targetUrl: string,
-  init: { method?: string; headers: Record<string, string>; body?: string }
+  init: {
+    method?: string
+    headers: Record<string, string>
+    body?: string
+    // 'manual' lets a caller inspect a 3xx response (status + Location header) instead
+    // of transparently following it — needed for the artifact-upload redirect to S3.
+    redirect?: 'manual' | 'follow'
+  }
 ) {
   return nodeFetch(targetUrl, {
     method: init.method || 'GET',
     headers: init.headers,
     body: init.body,
+    redirect: init.redirect || 'follow',
     agent: targetUrl.startsWith('https') ? httpsAgent : undefined,
   })
 }
