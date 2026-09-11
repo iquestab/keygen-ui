@@ -24,6 +24,33 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Shield, HelpCircle } from 'lucide-react'
 import { getKeygenApi } from '@/lib/api'
+import type {
+  PolicyHeartbeatCullStrategy,
+  PolicyHeartbeatResurrectionStrategy,
+  PolicyHeartbeatBasis,
+  PolicyMachineUniquenessStrategy,
+  PolicyMachineMatchingStrategy,
+  PolicyComponentUniquenessStrategy,
+  PolicyComponentMatchingStrategy,
+  PolicyExpirationStrategy,
+  PolicyExpirationBasis,
+  PolicyRenewalBasis,
+  PolicyTransferStrategy,
+  PolicyAuthenticationStrategy,
+  PolicyMachineLeasingStrategy,
+  PolicyProcessLeasingStrategy,
+  PolicyOverageStrategy,
+  PolicyCheckInInterval,
+} from '@/lib/types/keygen'
+import { bytesToMib, mibToBytes, parseOptionalInt } from '@/lib/utils/bytes'
+
+/** Render a nullable numeric attribute as a form field value */
+function numToField(
+  value: number | null | undefined,
+  transform: (n: number) => number = (n) => n
+): string {
+  return value == null ? '' : String(transform(value))
+}
 import { toast } from 'sonner'
 import { Policy } from '@/lib/types/keygen'
 import { handleCrudError } from '@/lib/utils/error-handling'
@@ -59,19 +86,42 @@ export function EditPolicyDialog({
     protected: false,
     requireHeartbeat: false,
     heartbeatDuration: '3600',
-    heartbeatCullStrategy: 'DEACTIVATE_DEAD' as 'DEACTIVATE_DEAD' | 'KEEP_DEAD',
-    heartbeatResurrectionStrategy: 'NO_REVIVE' as 'NO_REVIVE' | 'ALWAYS_REVIVE',
-    heartbeatBasis: 'FROM_CREATION' as 'FROM_CREATION' | 'FROM_FIRST_PING',
-    machineUniquenessStrategy: 'UNIQUE_PER_LICENSE' as 'UNIQUE_PER_LICENSE' | 'UNIQUE_PER_ACCOUNT',
-    machineMatchingStrategy: 'MATCH_ANY' as 'MATCH_ANY' | 'MATCH_TWO' | 'MATCH_MOST' | 'MATCH_ALL',
-    expirationStrategy: 'RESTRICT_ACCESS' as 'RESTRICT_ACCESS' | 'REVOKE_ACCESS' | 'MAINTAIN_ACCESS',
-    expirationBasis: 'FROM_CREATION' as 'FROM_CREATION' | 'FROM_FIRST_VALIDATION' | 'FROM_FIRST_ACTIVATION' | 'FROM_FIRST_DOWNLOAD' | 'FROM_FIRST_USE',
-    renewalBasis: 'FROM_EXPIRY' as 'FROM_EXPIRY' | 'FROM_NOW',
-    transferStrategy: 'RESET_EXPIRY' as 'RESET_EXPIRY' | 'KEEP_EXPIRY',
-    authenticationStrategy: 'TOKEN' as 'TOKEN' | 'LICENSE' | 'MIXED' | 'NONE',
-    machineLeasingStrategy: 'PER_LICENSE' as 'PER_LICENSE' | 'PER_USER' | 'ALWAYS_ALLOW',
-    processLeasingStrategy: 'PER_MACHINE' as 'PER_MACHINE' | 'PER_LICENSE' | 'PER_USER' | 'ALWAYS_ALLOW',
-    overageStrategy: 'NO_OVERAGE' as 'NO_OVERAGE' | 'ALWAYS_ALLOW_OVERAGE' | 'ALLOW_1_25X_OVERAGE' | 'ALLOW_1_5X_OVERAGE' | 'ALLOW_2X_OVERAGE',
+    heartbeatCullStrategy: 'DEACTIVATE_DEAD' as PolicyHeartbeatCullStrategy,
+    heartbeatResurrectionStrategy: 'NO_REVIVE' as PolicyHeartbeatResurrectionStrategy,
+    heartbeatBasis: 'FROM_CREATION' as PolicyHeartbeatBasis,
+    machineUniquenessStrategy: 'UNIQUE_PER_LICENSE' as PolicyMachineUniquenessStrategy,
+    machineMatchingStrategy: 'MATCH_ANY' as PolicyMachineMatchingStrategy,
+    componentUniquenessStrategy: 'UNIQUE_PER_MACHINE' as PolicyComponentUniquenessStrategy,
+    componentMatchingStrategy: 'MATCH_ANY' as PolicyComponentMatchingStrategy,
+    expirationStrategy: 'RESTRICT_ACCESS' as PolicyExpirationStrategy,
+    expirationBasis: 'FROM_CREATION' as PolicyExpirationBasis,
+    renewalBasis: 'FROM_EXPIRY' as PolicyRenewalBasis,
+    transferStrategy: 'RESET_EXPIRY' as PolicyTransferStrategy,
+    authenticationStrategy: 'TOKEN' as PolicyAuthenticationStrategy,
+    machineLeasingStrategy: 'PER_LICENSE' as PolicyMachineLeasingStrategy,
+    processLeasingStrategy: 'PER_MACHINE' as PolicyProcessLeasingStrategy,
+    overageStrategy: 'NO_OVERAGE' as PolicyOverageStrategy,
+    // Limits — blank means "no limit"
+    maxMachines: '',
+    maxProcesses: '',
+    maxUsers: '',
+    maxCores: '',
+    maxUses: '',
+    maxMemoryMib: '',
+    maxDiskMib: '',
+    // Check-in
+    requireCheckIn: false,
+    checkInInterval: 'month' as PolicyCheckInInterval,
+    checkInIntervalCount: '1',
+    // Validation scope requirements
+    requireProductScope: false,
+    requirePolicyScope: false,
+    requireMachineScope: false,
+    requireFingerprintScope: false,
+    requireComponentsScope: false,
+    requireUserScope: false,
+    requireChecksumScope: false,
+    requireVersionScope: false,
     metadata: ''
   })
 
@@ -93,6 +143,8 @@ export function EditPolicyDialog({
     machineLeasingStrategy: false,
     processLeasingStrategy: false,
     heartbeatResurrectionStrategy: false,
+    componentUniquenessStrategy: false,
+    componentMatchingStrategy: false,
   })
 
   const api = getKeygenApi()
@@ -111,18 +163,40 @@ export function EditPolicyDialog({
         requireHeartbeat: policy.attributes.requireHeartbeat,
         heartbeatDuration: policy.attributes.heartbeatDuration ? String(policy.attributes.heartbeatDuration) : '3600',
         heartbeatCullStrategy: policy.attributes.heartbeatCullStrategy || 'DEACTIVATE_DEAD',
-        heartbeatResurrectionStrategy: (policy.attributes.heartbeatResurrectionStrategy === 'REVIVE_DEAD' ? 'ALWAYS_REVIVE' : policy.attributes.heartbeatResurrectionStrategy) || 'NO_REVIVE',
+        heartbeatResurrectionStrategy: policy.attributes.heartbeatResurrectionStrategy || 'NO_REVIVE',
         heartbeatBasis: policy.attributes.heartbeatBasis || 'FROM_CREATION',
-        machineUniquenessStrategy: 'UNIQUE_PER_LICENSE',
-        machineMatchingStrategy: 'MATCH_ANY',
-        expirationStrategy: (policy.attributes.expirationStrategy as 'RESTRICT_ACCESS' | 'REVOKE_ACCESS' | 'MAINTAIN_ACCESS') || 'RESTRICT_ACCESS',
+        // These five were previously hardcoded to their defaults rather than read
+        // from the policy, so opening this dialog and saving silently reset them.
+        machineUniquenessStrategy: policy.attributes.machineUniquenessStrategy || 'UNIQUE_PER_LICENSE',
+        machineMatchingStrategy: policy.attributes.machineMatchingStrategy || 'MATCH_ANY',
+        transferStrategy: policy.attributes.transferStrategy || 'RESET_EXPIRY',
+        machineLeasingStrategy: policy.attributes.machineLeasingStrategy || 'PER_LICENSE',
+        processLeasingStrategy: policy.attributes.processLeasingStrategy || 'PER_MACHINE',
+        componentUniquenessStrategy: policy.attributes.componentUniquenessStrategy || 'UNIQUE_PER_MACHINE',
+        componentMatchingStrategy: policy.attributes.componentMatchingStrategy || 'MATCH_ANY',
+        expirationStrategy: policy.attributes.expirationStrategy || 'RESTRICT_ACCESS',
         expirationBasis: policy.attributes.expirationBasis || 'FROM_CREATION',
         renewalBasis: policy.attributes.renewalBasis || 'FROM_EXPIRY',
-        transferStrategy: 'RESET_EXPIRY',
         authenticationStrategy: policy.attributes.authenticationStrategy || 'TOKEN',
-        machineLeasingStrategy: 'PER_LICENSE',
-        processLeasingStrategy: 'PER_MACHINE',
         overageStrategy: policy.attributes.overageStrategy || 'NO_OVERAGE',
+        maxMachines: numToField(policy.attributes.maxMachines),
+        maxProcesses: numToField(policy.attributes.maxProcesses),
+        maxUsers: numToField(policy.attributes.maxUsers),
+        maxCores: numToField(policy.attributes.maxCores),
+        maxUses: numToField(policy.attributes.maxUses),
+        maxMemoryMib: numToField(policy.attributes.maxMemory, bytesToMib),
+        maxDiskMib: numToField(policy.attributes.maxDisk, bytesToMib),
+        requireCheckIn: policy.attributes.requireCheckIn ?? false,
+        checkInInterval: policy.attributes.checkInInterval || 'month',
+        checkInIntervalCount: numToField(policy.attributes.checkInIntervalCount) || '1',
+        requireProductScope: policy.attributes.requireProductScope ?? false,
+        requirePolicyScope: policy.attributes.requirePolicyScope ?? false,
+        requireMachineScope: policy.attributes.requireMachineScope ?? false,
+        requireFingerprintScope: policy.attributes.requireFingerprintScope ?? false,
+        requireComponentsScope: policy.attributes.requireComponentsScope ?? false,
+        requireUserScope: policy.attributes.requireUserScope ?? false,
+        requireChecksumScope: policy.attributes.requireChecksumScope ?? false,
+        requireVersionScope: policy.attributes.requireVersionScope ?? false,
         metadata: policy.attributes.metadata ? JSON.stringify(policy.attributes.metadata, null, 2) : ''
       })
       setTouchedStrategies({
@@ -137,6 +211,8 @@ export function EditPolicyDialog({
         machineLeasingStrategy: false,
         processLeasingStrategy: false,
         heartbeatResurrectionStrategy: false,
+        componentUniquenessStrategy: false,
+        componentMatchingStrategy: false,
       })
     }
   }, [open, policy])
@@ -208,6 +284,44 @@ export function EditPolicyDialog({
       if (touchedStrategies.processLeasingStrategy) {
         policyData.processLeasingStrategy = formData.processLeasingStrategy
       }
+      if (touchedStrategies.componentUniquenessStrategy) {
+        policyData.componentUniquenessStrategy = formData.componentUniquenessStrategy
+      }
+      if (touchedStrategies.componentMatchingStrategy) {
+        policyData.componentMatchingStrategy = formData.componentMatchingStrategy
+      }
+
+      // Limits — a blank field clears the limit, so send null rather than
+      // omitting it, otherwise an existing limit could never be removed.
+      const maxMemoryMib = parseOptionalInt(formData.maxMemoryMib)
+      const maxDiskMib = parseOptionalInt(formData.maxDiskMib)
+      policyData.maxMachines = parseOptionalInt(formData.maxMachines) ?? null
+      policyData.maxProcesses = parseOptionalInt(formData.maxProcesses) ?? null
+      policyData.maxUsers = parseOptionalInt(formData.maxUsers) ?? null
+      policyData.maxCores = parseOptionalInt(formData.maxCores) ?? null
+      policyData.maxUses = parseOptionalInt(formData.maxUses) ?? null
+      policyData.maxMemory = maxMemoryMib === undefined ? null : mibToBytes(maxMemoryMib)
+      policyData.maxDisk = maxDiskMib === undefined ? null : mibToBytes(maxDiskMib)
+
+      // Check-in
+      policyData.requireCheckIn = formData.requireCheckIn
+      if (formData.requireCheckIn) {
+        policyData.checkInInterval = formData.checkInInterval
+        const intervalCount = parseOptionalInt(formData.checkInIntervalCount)
+        if (intervalCount !== undefined) {
+          policyData.checkInIntervalCount = intervalCount
+        }
+      }
+
+      // Validation scope requirements
+      policyData.requireProductScope = formData.requireProductScope
+      policyData.requirePolicyScope = formData.requirePolicyScope
+      policyData.requireMachineScope = formData.requireMachineScope
+      policyData.requireFingerprintScope = formData.requireFingerprintScope
+      policyData.requireComponentsScope = formData.requireComponentsScope
+      policyData.requireUserScope = formData.requireUserScope
+      policyData.requireChecksumScope = formData.requireChecksumScope
+      policyData.requireVersionScope = formData.requireVersionScope
 
       if (formData.metadata.trim()) {
         try {
@@ -456,7 +570,7 @@ export function EditPolicyDialog({
                     </div>
                     <Select
                       value={formData.heartbeatResurrectionStrategy}
-                      onValueChange={(value: 'NO_REVIVE' | 'ALWAYS_REVIVE') => {
+                      onValueChange={(value: PolicyHeartbeatResurrectionStrategy) => {
                         setFormData({ ...formData, heartbeatResurrectionStrategy: value })
                         setTouchedStrategies(prev => ({ ...prev, heartbeatResurrectionStrategy: true }))
                       }}
@@ -465,8 +579,13 @@ export function EditPolicyDialog({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="NO_REVIVE">No Revive</SelectItem>
-                        <SelectItem value="ALWAYS_REVIVE">Always Revive</SelectItem>
+                        <SelectItem value="NO_REVIVE">No revive</SelectItem>
+                        <SelectItem value="1_MINUTE_REVIVE">Revive within 1 minute</SelectItem>
+                        <SelectItem value="2_MINUTE_REVIVE">Revive within 2 minutes</SelectItem>
+                        <SelectItem value="5_MINUTE_REVIVE">Revive within 5 minutes</SelectItem>
+                        <SelectItem value="10_MINUTE_REVIVE">Revive within 10 minutes</SelectItem>
+                        <SelectItem value="15_MINUTE_REVIVE">Revive within 15 minutes</SelectItem>
+                        <SelectItem value="ALWAYS_REVIVE">Always revive (requires Keep Dead)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -710,7 +829,7 @@ export function EditPolicyDialog({
                 </div>
                 <Select
                   value={formData.machineLeasingStrategy}
-                  onValueChange={(value: 'PER_LICENSE' | 'PER_USER' | 'ALWAYS_ALLOW') => {
+                  onValueChange={(value: PolicyMachineLeasingStrategy) => {
                     setFormData({ ...formData, machineLeasingStrategy: value })
                     setTouchedStrategies(prev => ({ ...prev, machineLeasingStrategy: true }))
                   }}
@@ -721,7 +840,6 @@ export function EditPolicyDialog({
                   <SelectContent>
                     <SelectItem value="PER_LICENSE">Per License</SelectItem>
                     <SelectItem value="PER_USER">Per User</SelectItem>
-                    <SelectItem value="ALWAYS_ALLOW">Always Allow</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -737,7 +855,7 @@ export function EditPolicyDialog({
                 </div>
                 <Select
                   value={formData.processLeasingStrategy}
-                  onValueChange={(value: 'PER_MACHINE' | 'PER_LICENSE' | 'PER_USER' | 'ALWAYS_ALLOW') => {
+                  onValueChange={(value: PolicyProcessLeasingStrategy) => {
                     setFormData({ ...formData, processLeasingStrategy: value })
                     setTouchedStrategies(prev => ({ ...prev, processLeasingStrategy: true }))
                   }}
@@ -749,7 +867,398 @@ export function EditPolicyDialog({
                     <SelectItem value="PER_MACHINE">Per Machine</SelectItem>
                     <SelectItem value="PER_LICENSE">Per License</SelectItem>
                     <SelectItem value="PER_USER">Per User</SelectItem>
-                    <SelectItem value="ALWAYS_ALLOW">Always Allow</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          {/* Limits */}
+          <div className="space-y-4">
+            <h4 className="text-sm font-medium">Limits</h4>
+            <p className="text-xs text-muted-foreground">
+              Applied to every license implementing this policy. Leave blank for no limit; an
+              individual license can override any of these.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="maxMachines">Max Machines</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>How many machines a license implementing this policy may activate</TooltipContent>
+                  </Tooltip>
+                </div>
+                <Input
+                  id="maxMachines"
+                  type="number"
+                  min="0"
+                  placeholder="No limit"
+                  value={formData.maxMachines}
+                  onChange={(e) => setFormData({ ...formData, maxMachines: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="maxProcesses">Max Processes</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>How many concurrent machine processes a license allows</TooltipContent>
+                  </Tooltip>
+                </div>
+                <Input
+                  id="maxProcesses"
+                  type="number"
+                  min="0"
+                  placeholder="No limit"
+                  value={formData.maxProcesses}
+                  onChange={(e) => setFormData({ ...formData, maxProcesses: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="maxUsers">Max Users</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>How many users may be attached to a license</TooltipContent>
+                  </Tooltip>
+                </div>
+                <Input
+                  id="maxUsers"
+                  type="number"
+                  min="0"
+                  placeholder="No limit"
+                  value={formData.maxUsers}
+                  onChange={(e) => setFormData({ ...formData, maxUsers: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="maxCores">Max CPU Cores</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>Total CPU cores summed across a license&apos;s machines</TooltipContent>
+                  </Tooltip>
+                </div>
+                <Input
+                  id="maxCores"
+                  type="number"
+                  min="0"
+                  placeholder="No limit"
+                  value={formData.maxCores}
+                  onChange={(e) => setFormData({ ...formData, maxCores: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="maxUses">Max Uses</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>How many times a license may be used before it stops validating</TooltipContent>
+                  </Tooltip>
+                </div>
+                <Input
+                  id="maxUses"
+                  type="number"
+                  min="0"
+                  placeholder="No limit"
+                  value={formData.maxUses}
+                  onChange={(e) => setFormData({ ...formData, maxUses: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="maxMemoryMib">Max Memory (MiB)</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>Total memory summed across a license&apos;s machines</TooltipContent>
+                  </Tooltip>
+                </div>
+                <Input
+                  id="maxMemoryMib"
+                  type="number"
+                  min="0"
+                  placeholder="No limit"
+                  value={formData.maxMemoryMib}
+                  onChange={(e) => setFormData({ ...formData, maxMemoryMib: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="maxDiskMib">Max Disk (MiB)</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>Total disk summed across a license&apos;s machines</TooltipContent>
+                  </Tooltip>
+                </div>
+                <Input
+                  id="maxDiskMib"
+                  type="number"
+                  min="0"
+                  placeholder="No limit"
+                  value={formData.maxDiskMib}
+                  onChange={(e) => setFormData({ ...formData, maxDiskMib: e.target.value })}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Check-in */}
+          <div className="space-y-4">
+            <h4 className="text-sm font-medium">Check-in</h4>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="requireCheckIn"
+                checked={formData.requireCheckIn}
+                onCheckedChange={(checked) => setFormData({ ...formData, requireCheckIn: !!checked })}
+              />
+              <Label htmlFor="requireCheckIn" className="font-normal">Require periodic check-in</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="size-3.5 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  A license that misses its check-in window stops passing validation until it checks in again.
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            {formData.requireCheckIn && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Interval</Label>
+                  <Select
+                    value={formData.checkInInterval}
+                    onValueChange={(value: PolicyCheckInInterval) =>
+                      setFormData({ ...formData, checkInInterval: value })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="day">Daily</SelectItem>
+                      <SelectItem value="week">Weekly</SelectItem>
+                      <SelectItem value="month">Monthly</SelectItem>
+                      <SelectItem value="year">Yearly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1">
+                    <Label htmlFor="checkInIntervalCount">Every</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="size-3.5 text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent>Number of intervals between check-ins — e.g. 2 with a weekly interval means every two weeks</TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <Input
+                    id="checkInIntervalCount"
+                    type="number"
+                    min="1"
+                    value={formData.checkInIntervalCount}
+                    onChange={(e) => setFormData({ ...formData, checkInIntervalCount: e.target.value })}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Required validation scopes */}
+          <div className="space-y-4">
+            <h4 className="text-sm font-medium">Required Validation Scopes</h4>
+            <p className="text-xs text-muted-foreground">
+              Validation fails unless the caller supplies each of these.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="requireProductScope"
+                  checked={formData.requireProductScope}
+                  onCheckedChange={(checked) => setFormData({ ...formData, requireProductScope: !!checked })}
+                />
+                <Label htmlFor="requireProductScope" className="font-normal">Product scope</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Validation must name the product the license belongs to</TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="requirePolicyScope"
+                  checked={formData.requirePolicyScope}
+                  onCheckedChange={(checked) => setFormData({ ...formData, requirePolicyScope: !!checked })}
+                />
+                <Label htmlFor="requirePolicyScope" className="font-normal">Policy scope</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Validation must name the policy the license implements</TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="requireMachineScope"
+                  checked={formData.requireMachineScope}
+                  onCheckedChange={(checked) => setFormData({ ...formData, requireMachineScope: !!checked })}
+                />
+                <Label htmlFor="requireMachineScope" className="font-normal">Machine scope</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Validation must name a specific machine</TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="requireFingerprintScope"
+                  checked={formData.requireFingerprintScope}
+                  onCheckedChange={(checked) => setFormData({ ...formData, requireFingerprintScope: !!checked })}
+                />
+                <Label htmlFor="requireFingerprintScope" className="font-normal">Fingerprint scope</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Validation must supply a machine fingerprint — the basis of node-locked licensing</TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="requireComponentsScope"
+                  checked={formData.requireComponentsScope}
+                  onCheckedChange={(checked) => setFormData({ ...formData, requireComponentsScope: !!checked })}
+                />
+                <Label htmlFor="requireComponentsScope" className="font-normal">Components scope</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Validation must supply component fingerprints</TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="requireUserScope"
+                  checked={formData.requireUserScope}
+                  onCheckedChange={(checked) => setFormData({ ...formData, requireUserScope: !!checked })}
+                />
+                <Label htmlFor="requireUserScope" className="font-normal">User scope</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Validation must name the user the license belongs to</TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="requireChecksumScope"
+                  checked={formData.requireChecksumScope}
+                  onCheckedChange={(checked) => setFormData({ ...formData, requireChecksumScope: !!checked })}
+                />
+                <Label htmlFor="requireChecksumScope" className="font-normal">Checksum scope</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Validation must supply an artifact checksum</TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="requireVersionScope"
+                  checked={formData.requireVersionScope}
+                  onCheckedChange={(checked) => setFormData({ ...formData, requireVersionScope: !!checked })}
+                />
+                <Label htmlFor="requireVersionScope" className="font-normal">Version scope</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Validation must supply a release version</TooltipContent>
+                </Tooltip>
+              </div>
+            </div>
+          </div>
+
+          {/* Component strategies */}
+          <div className="space-y-4">
+            <h4 className="text-sm font-medium">Component Strategies</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <div className="flex items-center gap-1">
+                  <Label>Component Uniqueness</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>How widely a component fingerprint must be unique</TooltipContent>
+                  </Tooltip>
+                </div>
+                <Select
+                  value={formData.componentUniquenessStrategy}
+                  onValueChange={(value: PolicyComponentUniquenessStrategy) => {
+                    setFormData({ ...formData, componentUniquenessStrategy: value })
+                    setTouchedStrategies(prev => ({ ...prev, componentUniquenessStrategy: true }))
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="UNIQUE_PER_ACCOUNT">Unique per account</SelectItem>
+                    <SelectItem value="UNIQUE_PER_PRODUCT">Unique per product</SelectItem>
+                    <SelectItem value="UNIQUE_PER_POLICY">Unique per policy</SelectItem>
+                    <SelectItem value="UNIQUE_PER_LICENSE">Unique per license</SelectItem>
+                    <SelectItem value="UNIQUE_PER_MACHINE">Unique per machine</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-1">
+                  <Label>Component Matching</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>How many supplied component fingerprints must match during validation</TooltipContent>
+                  </Tooltip>
+                </div>
+                <Select
+                  value={formData.componentMatchingStrategy}
+                  onValueChange={(value: PolicyComponentMatchingStrategy) => {
+                    setFormData({ ...formData, componentMatchingStrategy: value })
+                    setTouchedStrategies(prev => ({ ...prev, componentMatchingStrategy: true }))
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="MATCH_ANY">Match any</SelectItem>
+                    <SelectItem value="MATCH_TWO">Match two</SelectItem>
+                    <SelectItem value="MATCH_MOST">Match most</SelectItem>
+                    <SelectItem value="MATCH_ALL">Match all</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

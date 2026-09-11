@@ -1,8 +1,93 @@
 import { KeygenClient } from '../client';
-import { Policy, Entitlement, KeygenResponse, PaginationOptions, KeygenListResponse } from '../../types/keygen';
+import {
+  Policy,
+  PolicyLimits,
+  PolicyScopeRequirements,
+  PolicyHeartbeatCullStrategy,
+  PolicyHeartbeatResurrectionStrategy,
+  PolicyHeartbeatBasis,
+  PolicyMachineUniquenessStrategy,
+  PolicyMachineMatchingStrategy,
+  PolicyComponentUniquenessStrategy,
+  PolicyComponentMatchingStrategy,
+  PolicyExpirationStrategy,
+  PolicyExpirationBasis,
+  PolicyRenewalBasis,
+  PolicyTransferStrategy,
+  PolicyAuthenticationStrategy,
+  PolicyMachineLeasingStrategy,
+  PolicyProcessLeasingStrategy,
+  PolicyOverageStrategy,
+  PolicyCheckInInterval,
+  PolicyScheme,
+  Entitlement,
+  KeygenResponse,
+  PaginationOptions,
+  KeygenListResponse,
+} from '../../types/keygen';
 
 export interface PolicyFilters extends PaginationOptions {
+  /** The identifier (UUID) of the product to filter by */
+  product?: string;
+}
+
+/**
+ * Policy attributes that can be changed after creation. `usePool` and `scheme`
+ * are deliberately absent — Keygen fixes both at creation time.
+ */
+export interface PolicyUpdateInput extends PolicyLimits, PolicyScopeRequirements {
   name?: string;
+  duration?: number | null;
+  strict?: boolean;
+  floating?: boolean;
+  protected?: boolean;
+  requireCheckIn?: boolean;
+  checkInInterval?: PolicyCheckInInterval;
+  checkInIntervalCount?: number;
+  requireHeartbeat?: boolean;
+  heartbeatDuration?: number;
+  heartbeatCullStrategy?: PolicyHeartbeatCullStrategy;
+  heartbeatResurrectionStrategy?: PolicyHeartbeatResurrectionStrategy;
+  heartbeatBasis?: PolicyHeartbeatBasis;
+  machineUniquenessStrategy?: PolicyMachineUniquenessStrategy;
+  machineMatchingStrategy?: PolicyMachineMatchingStrategy;
+  componentUniquenessStrategy?: PolicyComponentUniquenessStrategy;
+  componentMatchingStrategy?: PolicyComponentMatchingStrategy;
+  expirationStrategy?: PolicyExpirationStrategy;
+  expirationBasis?: PolicyExpirationBasis;
+  renewalBasis?: PolicyRenewalBasis;
+  transferStrategy?: PolicyTransferStrategy;
+  authenticationStrategy?: PolicyAuthenticationStrategy;
+  machineLeasingStrategy?: PolicyMachineLeasingStrategy;
+  processLeasingStrategy?: PolicyProcessLeasingStrategy;
+  overageStrategy?: PolicyOverageStrategy;
+  metadata?: Record<string, unknown>;
+}
+
+export interface PolicyCreateInput extends PolicyUpdateInput {
+  name: string;
+  productId: string;
+  /**
+   * Pull license keys from a finite pool of pre-determined keys.
+   * Cannot be changed later.
+   */
+  usePool?: boolean;
+  /**
+   * Cryptographic signing scheme used for offline license/machine files.
+   * Cannot be changed later.
+   */
+  scheme?: PolicyScheme;
+}
+
+/** A key popped off a policy's pre-determined key pool */
+export interface PolicyPoolKey {
+  id: string;
+  type: 'keys';
+  attributes: {
+    key: string;
+    created: string;
+    updated: string;
+  };
 }
 
 export class PolicyResource {
@@ -16,7 +101,7 @@ export class PolicyResource {
       ...this.client.buildPaginationParams(filters),
     };
 
-    if (filters.name) params.name = filters.name;
+    if (filters.product) params.product = filters.product;
 
     return this.client.request<Policy[]>('/policies', { params });
   }
@@ -31,36 +116,9 @@ export class PolicyResource {
   /**
    * Create a new policy
    */
-  async create(data: {
-    name: string;
-    productId: string;
-    duration?: number;
-    strict?: boolean;
-    floating?: boolean;
-    concurrent?: boolean;
-    protected?: boolean;
-    requireHeartbeat?: boolean;
-    heartbeatDuration?: number;
-    heartbeatCullStrategy?: 'DEACTIVATE_DEAD' | 'KEEP_DEAD';
-    heartbeatResurrectionStrategy?: 'NO_REVIVE' | 'ALWAYS_REVIVE';
-    heartbeatBasis?: 'FROM_CREATION' | 'FROM_FIRST_PING';
-    machineUniquenessStrategy?: 'UNIQUE_PER_LICENSE' | 'UNIQUE_PER_ACCOUNT';
-    machineMatchingStrategy?: 'MATCH_ANY' | 'MATCH_TWO' | 'MATCH_MOST' | 'MATCH_ALL';
-    expirationStrategy?: 'RESTRICT_ACCESS' | 'REVOKE_ACCESS' | 'MAINTAIN_ACCESS';
-    expirationBasis?: 'FROM_CREATION' | 'FROM_FIRST_VALIDATION' | 'FROM_FIRST_ACTIVATION' | 'FROM_FIRST_DOWNLOAD' | 'FROM_FIRST_USE';
-    renewalBasis?: 'FROM_EXPIRY' | 'FROM_NOW';
-    transferStrategy?: 'RESET_EXPIRY' | 'KEEP_EXPIRY';
-    authenticationStrategy?: 'TOKEN' | 'LICENSE' | 'MIXED' | 'NONE';
-    machineLeasingStrategy?: 'PER_LICENSE' | 'PER_USER' | 'ALWAYS_ALLOW';
-    processLeasingStrategy?: 'PER_MACHINE' | 'PER_LICENSE' | 'PER_USER' | 'ALWAYS_ALLOW';
-    overageStrategy?: 'NO_OVERAGE' | 'ALWAYS_ALLOW_OVERAGE' | 'ALLOW_1_25X_OVERAGE' | 'ALLOW_1_5X_OVERAGE' | 'ALLOW_2X_OVERAGE';
-    // Cryptographic signing scheme used for offline license/machine files. Immutable
-    // after creation, so this is only accepted here — not in update().
-    scheme?: 'ED25519_SIGN' | 'RSA_2048_PKCS1_ENCRYPT' | 'RSA_2048_PKCS1_SIGN' | 'RSA_2048_PKCS1_PSS_SIGN' | 'RSA_2048_JWT_RS256';
-    metadata?: Record<string, unknown>;
-  }): Promise<KeygenResponse<Policy>> {
+  async create(data: PolicyCreateInput): Promise<KeygenResponse<Policy>> {
     const { productId, ...attributes } = data;
-    
+
     return this.client.request<Policy>('/policies', {
       method: 'POST',
       body: {
@@ -83,30 +141,7 @@ export class PolicyResource {
   /**
    * Update a policy
    */
-  async update(policyId: string, data: {
-    name?: string;
-    duration?: number;
-    strict?: boolean;
-    floating?: boolean;
-    concurrent?: boolean;
-    protected?: boolean;
-    requireHeartbeat?: boolean;
-    heartbeatDuration?: number;
-    heartbeatCullStrategy?: 'DEACTIVATE_DEAD' | 'KEEP_DEAD';
-    heartbeatResurrectionStrategy?: 'NO_REVIVE' | 'ALWAYS_REVIVE';
-    heartbeatBasis?: 'FROM_CREATION' | 'FROM_FIRST_PING';
-    machineUniquenessStrategy?: 'UNIQUE_PER_LICENSE' | 'UNIQUE_PER_ACCOUNT';
-    machineMatchingStrategy?: 'MATCH_ANY' | 'MATCH_TWO' | 'MATCH_MOST' | 'MATCH_ALL';
-    expirationStrategy?: 'RESTRICT_ACCESS' | 'REVOKE_ACCESS' | 'MAINTAIN_ACCESS';
-    expirationBasis?: 'FROM_CREATION' | 'FROM_FIRST_VALIDATION' | 'FROM_FIRST_ACTIVATION' | 'FROM_FIRST_DOWNLOAD' | 'FROM_FIRST_USE';
-    renewalBasis?: 'FROM_EXPIRY' | 'FROM_NOW';
-    transferStrategy?: 'RESET_EXPIRY' | 'KEEP_EXPIRY';
-    authenticationStrategy?: 'TOKEN' | 'LICENSE' | 'MIXED' | 'NONE';
-    machineLeasingStrategy?: 'PER_LICENSE' | 'PER_USER' | 'ALWAYS_ALLOW';
-    processLeasingStrategy?: 'PER_MACHINE' | 'PER_LICENSE' | 'PER_USER' | 'ALWAYS_ALLOW';
-    overageStrategy?: 'NO_OVERAGE' | 'ALWAYS_ALLOW_OVERAGE' | 'ALLOW_1_25X_OVERAGE' | 'ALLOW_1_5X_OVERAGE' | 'ALLOW_2X_OVERAGE';
-    metadata?: Record<string, unknown>;
-  }): Promise<KeygenResponse<Policy>> {
+  async update(policyId: string, data: PolicyUpdateInput): Promise<KeygenResponse<Policy>> {
     return this.client.request<Policy>(`/policies/${policyId}`, {
       method: 'PATCH',
       body: {
@@ -124,6 +159,19 @@ export class PolicyResource {
    */
   async delete(policyId: string): Promise<void> {
     await this.client.request<void>(`/policies/${policyId}`, {
+      method: 'DELETE'
+    });
+  }
+
+  /**
+   * Pop a key off the policy's pool of pre-determined keys, deleting it.
+   * Only meaningful for policies created with `usePool: true`.
+   *
+   * Returns 200 with the popped key rather than 204, so the key is readable
+   * once — it is gone from the pool afterwards.
+   */
+  async popPoolKey(policyId: string): Promise<KeygenResponse<PolicyPoolKey>> {
+    return this.client.request<PolicyPoolKey>(`/policies/${policyId}/pool`, {
       method: 'DELETE'
     });
   }

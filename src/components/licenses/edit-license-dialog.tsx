@@ -13,13 +13,50 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Edit, HelpCircle } from 'lucide-react'
 import { getKeygenApi } from '@/lib/api'
 import { toast } from 'sonner'
 import { License } from '@/lib/types/keygen'
+import type { LicenseUpdateInput } from '@/lib/api/resources/licenses'
 import { handleCrudError } from '@/lib/utils/error-handling'
+import { bytesToMib, mibToBytes } from '@/lib/utils/bytes'
 import { EntitlementManager } from '@/components/shared/entitlement-manager'
+
+/** Render a nullable numeric attribute as a form field value */
+function numToField(
+  value: number | null | undefined,
+  transform: (n: number) => number = (n) => n
+): string {
+  return value == null ? '' : String(transform(value))
+}
+
+/**
+ * Diff one numeric limit field against its current value.
+ * Returns `undefined` when unchanged (omit from the payload) and `null` when
+ * cleared, which resets the override so the policy's limit applies again.
+ */
+function diffLimit(
+  fieldValue: string,
+  current: number | null | undefined,
+  units: { toField: (n: number) => number; toPayload: (n: number) => number } = {
+    toField: (n) => n,
+    toPayload: (n) => n,
+  }
+): number | null | undefined {
+  const trimmed = fieldValue.trim()
+  if (trimmed === numToField(current, units.toField)) return undefined
+
+  if (!trimmed) return null
+
+  const parsed = parseInt(trimmed, 10)
+  if (Number.isNaN(parsed)) return undefined
+
+  return units.toPayload(parsed)
+}
+
+const MIB_UNITS = { toField: bytesToMib, toPayload: mibToBytes }
 
 interface EditLicenseDialogProps {
   license: License
@@ -38,7 +75,15 @@ export function EditLicenseDialog({
   const [formData, setFormData] = useState({
     name: '',
     expiry: '',
+    protected: false,
+    permissions: '',
     maxUses: '',
+    maxMachines: '',
+    maxProcesses: '',
+    maxUsers: '',
+    maxCores: '',
+    maxMemoryMib: '',
+    maxDiskMib: '',
     metadata: ''
   })
   const api = getKeygenApi()
@@ -46,11 +91,20 @@ export function EditLicenseDialog({
   // Initialize form data when dialog opens
   useEffect(() => {
     if (open && license) {
+      const { attributes } = license
       setFormData({
-        name: license.attributes.name || '',
-        expiry: license.attributes.expiry ? license.attributes.expiry.split('T')[0] : '', // Convert to date string
-        maxUses: license.attributes.maxUses?.toString() || '',
-        metadata: license.attributes.metadata ? JSON.stringify(license.attributes.metadata, null, 2) : ''
+        name: attributes.name || '',
+        expiry: attributes.expiry ? attributes.expiry.split('T')[0] : '', // Convert to date string
+        protected: attributes.protected ?? false,
+        permissions: (attributes.permissions || []).join(', '),
+        maxUses: numToField(attributes.maxUses),
+        maxMachines: numToField(attributes.maxMachines),
+        maxProcesses: numToField(attributes.maxProcesses),
+        maxUsers: numToField(attributes.maxUsers),
+        maxCores: numToField(attributes.maxCores),
+        maxMemoryMib: numToField(attributes.maxMemory, bytesToMib),
+        maxDiskMib: numToField(attributes.maxDisk, bytesToMib),
+        metadata: attributes.metadata ? JSON.stringify(attributes.metadata, null, 2) : ''
       })
     }
   }, [open, license])
@@ -61,22 +115,49 @@ export function EditLicenseDialog({
     try {
       setLoading(true)
       
-      const updates: Partial<License['attributes']> = {}
-      
-      // Only include fields that have values or have changed
-      if (formData.name.trim() !== (license.attributes.name || '')) {
-        updates.name = formData.name.trim() || undefined
+      const { attributes } = license
+      const updates: LicenseUpdateInput = {}
+
+      // Only include fields that have changed. `null` clears a value — sending
+      // `undefined` would just be dropped by JSON.stringify and silently no-op.
+      if (formData.name.trim() !== (attributes.name || '')) {
+        updates.name = formData.name.trim() || null
       }
-      
-      if (formData.expiry !== (license.attributes.expiry?.split('T')[0] || '')) {
-        updates.expiry = formData.expiry ? new Date(formData.expiry).toISOString() : undefined
+
+      if (formData.expiry !== (attributes.expiry?.split('T')[0] || '')) {
+        updates.expiry = formData.expiry ? new Date(formData.expiry).toISOString() : null
       }
-      
-      if (formData.maxUses !== (license.attributes.maxUses?.toString() || '')) {
-        updates.maxUses = formData.maxUses ? parseInt(formData.maxUses) : undefined
+
+      if (formData.protected !== (attributes.protected ?? false)) {
+        updates.protected = formData.protected
       }
-      
-      if (formData.metadata !== (license.attributes.metadata ? JSON.stringify(license.attributes.metadata, null, 2) : '')) {
+
+      // Only sent when non-empty: clearing the field keeps the current
+      // permissions rather than stripping the license of all of them.
+      const permissionsField = formData.permissions.trim()
+      if (permissionsField && permissionsField !== (attributes.permissions || []).join(', ')) {
+        updates.permissions = permissionsField
+          .split(',')
+          .map((permission) => permission.trim())
+          .filter(Boolean)
+      }
+
+      const limits: Record<string, number | null | undefined> = {
+        maxUses: diffLimit(formData.maxUses, attributes.maxUses),
+        maxMachines: diffLimit(formData.maxMachines, attributes.maxMachines),
+        maxProcesses: diffLimit(formData.maxProcesses, attributes.maxProcesses),
+        maxUsers: diffLimit(formData.maxUsers, attributes.maxUsers),
+        maxCores: diffLimit(formData.maxCores, attributes.maxCores),
+        maxMemory: diffLimit(formData.maxMemoryMib, attributes.maxMemory, MIB_UNITS),
+        maxDisk: diffLimit(formData.maxDiskMib, attributes.maxDisk, MIB_UNITS),
+      }
+      for (const [key, value] of Object.entries(limits)) {
+        if (value !== undefined) {
+          ;(updates as Record<string, unknown>)[key] = value
+        }
+      }
+
+      if (formData.metadata !== (attributes.metadata ? JSON.stringify(attributes.metadata, null, 2) : '')) {
         if (formData.metadata.trim()) {
           try {
             updates.metadata = JSON.parse(formData.metadata)
@@ -122,7 +203,10 @@ export function EditLicenseDialog({
           {/* License Key (Read-only) */}
           <div className="space-y-2">
             <Label>License Key</Label>
-            <div className="p-2 bg-muted rounded-md font-mono text-sm">
+            {/* Signed/encrypted keys run to hundreds of characters with no
+                spaces — without break-all the key's min-content width drags
+                the whole dialog past its max-width. */}
+            <div className="p-2 bg-muted rounded-md font-mono text-sm break-all select-all max-h-24 overflow-y-auto">
               {license.attributes.key}
             </div>
             <p className="text-xs text-muted-foreground">
@@ -171,28 +255,190 @@ export function EditLicenseDialog({
             </p>
           </div>
 
-          {/* Max Uses */}
-          <div className="space-y-2">
+          {/* Protected */}
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="protected"
+              checked={formData.protected}
+              onCheckedChange={(v) => setFormData({ ...formData, protected: Boolean(v) })}
+            />
             <div className="flex items-center gap-1">
-              <Label htmlFor="maxUses">Maximum Uses</Label>
+              <Label htmlFor="protected">Protected</Label>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <HelpCircle className="size-3.5 text-muted-foreground" />
                 </TooltipTrigger>
-                <TooltipContent>Caps how many times this license can be activated or validated. Leave blank for unlimited.</TooltipContent>
+                <TooltipContent>Stops end users from activating and managing machines themselves</TooltipContent>
+              </Tooltip>
+            </div>
+          </div>
+
+          {/* Permissions */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-1">
+              <Label htmlFor="permissions">Permissions</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="size-3.5 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent>Comma-separated (e.g., *, machines:read)</TooltipContent>
               </Tooltip>
             </div>
             <Input
-              id="maxUses"
-              type="number"
-              min="0"
-              placeholder="Unlimited"
-              value={formData.maxUses}
-              onChange={(e) => setFormData({ ...formData, maxUses: e.target.value })}
+              id="permissions"
+              placeholder="Inherited from the token bearer"
+              value={formData.permissions}
+              onChange={(e) => setFormData({ ...formData, permissions: e.target.value })}
             />
             <p className="text-xs text-muted-foreground">
-              Maximum number of times this license can be used
+              Leave blank to keep the current permissions
             </p>
+          </div>
+
+          {/* Limits */}
+          <div className="space-y-3">
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Limits
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Blank means this license inherits its policy&apos;s limit. Clearing a value you had
+              set removes the override.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <div className="flex items-center gap-1">
+                <Label htmlFor="maxUses">Max Uses</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Caps how many times this license can be activated or validated</TooltipContent>
+                </Tooltip>
+              </div>
+              <Input
+                id="maxUses"
+                type="number"
+                min="0"
+                placeholder="Inherit from policy"
+                value={formData.maxUses}
+                onChange={(e) => setFormData({ ...formData, maxUses: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-1">
+                <Label htmlFor="maxMachines">Max Machines</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>How many machines can be activated against this license</TooltipContent>
+                </Tooltip>
+              </div>
+              <Input
+                id="maxMachines"
+                type="number"
+                min="0"
+                placeholder="Inherit from policy"
+                value={formData.maxMachines}
+                onChange={(e) => setFormData({ ...formData, maxMachines: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-1">
+                <Label htmlFor="maxProcesses">Max Processes</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>How many concurrent machine processes this license allows</TooltipContent>
+                </Tooltip>
+              </div>
+              <Input
+                id="maxProcesses"
+                type="number"
+                min="0"
+                placeholder="Inherit from policy"
+                value={formData.maxProcesses}
+                onChange={(e) => setFormData({ ...formData, maxProcesses: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-1">
+                <Label htmlFor="maxUsers">Max Users</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>How many users can be attached to this license</TooltipContent>
+                </Tooltip>
+              </div>
+              <Input
+                id="maxUsers"
+                type="number"
+                min="0"
+                placeholder="Inherit from policy"
+                value={formData.maxUsers}
+                onChange={(e) => setFormData({ ...formData, maxUsers: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-1">
+                <Label htmlFor="maxCores">Max CPU Cores</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Total CPU cores summed across all of this license&apos;s machines</TooltipContent>
+                </Tooltip>
+              </div>
+              <Input
+                id="maxCores"
+                type="number"
+                min="0"
+                placeholder="Inherit from policy"
+                value={formData.maxCores}
+                onChange={(e) => setFormData({ ...formData, maxCores: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-1">
+                <Label htmlFor="maxMemoryMib">Max Memory (MiB)</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Total memory summed across all of this license&apos;s machines</TooltipContent>
+                </Tooltip>
+              </div>
+              <Input
+                id="maxMemoryMib"
+                type="number"
+                min="0"
+                placeholder="Inherit from policy"
+                value={formData.maxMemoryMib}
+                onChange={(e) => setFormData({ ...formData, maxMemoryMib: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-1">
+                <Label htmlFor="maxDiskMib">Max Disk (MiB)</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Total disk summed across all of this license&apos;s machines</TooltipContent>
+                </Tooltip>
+              </div>
+              <Input
+                id="maxDiskMib"
+                type="number"
+                min="0"
+                placeholder="Inherit from policy"
+                value={formData.maxDiskMib}
+                onChange={(e) => setFormData({ ...formData, maxDiskMib: e.target.value })}
+              />
+            </div>
+            </div>
           </div>
 
           {/* Entitlements */}

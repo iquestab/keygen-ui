@@ -16,6 +16,7 @@ import { PackageResource } from './resources/packages';
 import { ReleaseResource } from './resources/releases';
 import { ArtifactResource } from './resources/artifacts';
 import { ChannelResource } from './resources/channels';
+import { ProcessResource } from './resources/processes';
 
 export class KeygenApi {
   public licenses: LicenseResource;
@@ -35,6 +36,7 @@ export class KeygenApi {
   public releases: ReleaseResource;
   public artifacts: ArtifactResource;
   public channels: ChannelResource;
+  public processes: ProcessResource;
 
   constructor(private client: KeygenClient) {
     this.licenses = new LicenseResource(client);
@@ -54,6 +56,7 @@ export class KeygenApi {
     this.releases = new ReleaseResource(client);
     this.artifacts = new ArtifactResource(client);
     this.channels = new ChannelResource(client);
+    this.processes = new ProcessResource(client);
   }
 
   /**
@@ -123,3 +126,4 @@ export { PackageResource } from './resources/packages';
 export { ReleaseResource } from './resources/releases';
 export { ArtifactResource } from './resources/artifacts';
 export { ChannelResource } from './resources/channels';
+export { ProcessResource } from './resources/processes';

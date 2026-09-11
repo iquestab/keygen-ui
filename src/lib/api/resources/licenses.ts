@@ -1,5 +1,150 @@
 import { KeygenClient } from '../client';
-import { License, LicenseFilters, Entitlement, KeygenResponse, KeygenListResponse } from '@/lib/types/keygen';
+import { License, LicenseFilters, Entitlement, Machine, User, PaginationOptions, KeygenResponse, KeygenListResponse } from '@/lib/types/keygen';
+
+/**
+ * Per-license overrides of the policy's limits. Sending `null` resets the
+ * override so the license inherits the policy value again; omitting the key
+ * leaves it untouched.
+ */
+export interface LicenseLimits {
+  maxUses?: number | null;
+  maxMachines?: number | null;
+  maxProcesses?: number | null;
+  maxUsers?: number | null;
+  maxCores?: number | null;
+  maxMemory?: number | null;
+  maxDisk?: number | null;
+}
+
+const LICENSE_LIMIT_KEYS = [
+  'maxUses',
+  'maxMachines',
+  'maxProcesses',
+  'maxUsers',
+  'maxCores',
+  'maxMemory',
+  'maxDisk',
+] as const satisfies readonly (keyof LicenseLimits)[];
+
+function buildLicenseLimits(source: LicenseLimits): Record<string, number | null> {
+  const limits: Record<string, number | null> = {};
+  for (const key of LICENSE_LIMIT_KEYS) {
+    const value = source[key];
+    // `null` is meaningful here (reset to the policy's value), so only skip undefined
+    if (value !== undefined) {
+      limits[key] = value;
+    }
+  }
+  return limits;
+}
+
+/**
+ * Writable license attributes. `null` clears a value (or resets a limit so it
+ * inherits from the policy again); omitting a key leaves it untouched.
+ */
+export interface LicenseUpdateInput extends LicenseLimits {
+  name?: string | null;
+  metadata?: Record<string, unknown>;
+  expiry?: string | null;
+  protected?: boolean;
+  suspended?: boolean;
+  permissions?: string[];
+}
+
+/** Validation result codes returned in `meta.code` by the validate actions */
+export type LicenseValidationCode =
+  | 'VALID'
+  | 'SUSPENDED'
+  | 'EXPIRED'
+  | 'OVERDUE'
+  | 'NO_MACHINE'
+  | 'NO_MACHINES'
+  | 'TOO_MANY_MACHINES'
+  | 'TOO_MANY_CORES'
+  | 'TOO_MUCH_MEMORY'
+  | 'TOO_MUCH_DISK'
+  | 'TOO_MANY_PROCESSES'
+  | 'TOO_MANY_USERS'
+  | 'FINGERPRINT_SCOPE_REQUIRED'
+  | 'FINGERPRINT_SCOPE_MISMATCH'
+  | 'FINGERPRINT_SCOPE_EMPTY'
+  | 'COMPONENTS_SCOPE_REQUIRED'
+  | 'COMPONENTS_SCOPE_MISMATCH'
+  | 'COMPONENTS_SCOPE_EMPTY'
+  | 'HEARTBEAT_NOT_STARTED'
+  | 'HEARTBEAT_DEAD'
+  | 'PRODUCT_SCOPE_REQUIRED'
+  | 'PRODUCT_SCOPE_MISMATCH'
+  | 'POLICY_SCOPE_REQUIRED'
+  | 'POLICY_SCOPE_MISMATCH'
+  | 'MACHINE_SCOPE_REQUIRED'
+  | 'MACHINE_SCOPE_MISMATCH'
+  | 'ENTITLEMENTS_SCOPE_REQUIRED'
+  | 'ENTITLEMENTS_SCOPE_MISMATCH'
+  | 'USER_SCOPE_REQUIRED'
+  | 'USER_SCOPE_MISMATCH'
+  | 'CHECKSUM_SCOPE_REQUIRED'
+  | 'CHECKSUM_SCOPE_MISMATCH'
+  | 'VERSION_SCOPE_REQUIRED'
+  | 'VERSION_SCOPE_MISMATCH'
+  | 'TOO_MANY_USES'
+  | 'BANNED'
+  | 'NOT_FOUND';
+
+/**
+ * Scope to validate against. A policy may *require* certain scopes
+ * (e.g. `requireFingerprintScope`), in which case validation fails without them.
+ */
+export interface LicenseValidationScope {
+  product?: string;
+  policy?: string;
+  machine?: string;
+  /** UUID or email */
+  user?: string;
+  fingerprint?: string;
+  fingerprints?: string[];
+  components?: string[];
+  entitlements?: string[];
+  version?: string;
+  checksum?: string;
+}
+
+export interface LicenseValidationResult extends KeygenResponse<License> {
+  meta?: {
+    ts?: string;
+    valid?: boolean;
+    detail?: string;
+    code?: LicenseValidationCode;
+    /** Echoed back when a nonce was supplied */
+    nonce?: number;
+    [key: string]: unknown;
+  };
+}
+
+/** Encryption + signing pair for a checked-out license file */
+export type LicenseFileAlgorithm =
+  | 'aes-256-gcm+ed25519'
+  | 'aes-256-gcm+ecdsa-p256'
+  | 'aes-256-gcm+rsa-pss-sha256'
+  | 'aes-256-gcm+rsa-sha256'
+  | 'base64+ed25519'
+  | 'base64+ecdsa-p256'
+  | 'base64+rsa-pss-sha256'
+  | 'base64+rsa-sha256';
+
+/**
+ * Relationships that can be embedded in a checked-out license file. The bearer
+ * must be able to read everything included — a license bearer cannot include
+ * `environment`, `product`, `policy` or `owner`.
+ */
+export type LicenseFileInclude =
+  | 'entitlements'
+  | 'product'
+  | 'policy'
+  | 'owner'
+  | 'users'
+  | 'environment'
+  | 'group';
 
 export class LicenseResource {
   constructor(private client: KeygenClient) {}
@@ -12,15 +157,28 @@ export class LicenseResource {
       ...this.client.buildPaginationParams(filters),
     };
 
-    // Add filter parameters
+    // Relationship filters
+    if (filters.owner) params.owner = filters.owner;
     if (filters.user) params.user = filters.user;
     if (filters.policy) params.policy = filters.policy;
     if (filters.group) params.group = filters.group;
     if (filters.product) params.product = filters.product;
+    if (filters.machine) params.machine = filters.machine;
+
     if (filters.status) params.status = filters.status;
-    if (filters.key) params.key = filters.key;
-    if (filters.encrypted !== undefined) params.encrypted = filters.encrypted;
-    if (filters.suspended !== undefined) params.suspended = filters.suspended;
+
+    // Assignment / activation filters
+    if (filters.unassigned !== undefined) params.unassigned = filters.unassigned;
+    if (filters.assigned !== undefined) params.assigned = filters.assigned;
+    if (filters.activated !== undefined) params.activated = filters.activated;
+
+    // Object filters — the client serializes these to expires[in]=30d,
+    // activations[gt]=3, etc.
+    if (filters.expires) params.expires = filters.expires;
+    if (filters.expired) params.expired = filters.expired;
+    if (filters.activity) params.activity = filters.activity;
+    if (filters.activations) params.activations = filters.activations;
+
     if (filters.metadata) {
       for (const [key, value] of Object.entries(filters.metadata)) {
         params[`metadata[${key}]`] = value;
@@ -42,15 +200,26 @@ export class LicenseResource {
    */
   async create(licenseData: {
     policyId: string;
-    userId?: string;
+    /** The user that owns the license (the `owner` relationship) */
+    ownerId?: string;
     groupId?: string;
     name?: string;
     metadata?: Record<string, unknown>;
     expiry?: string;
-    maxUses?: number;
     key?: string;
     protected?: boolean;
+    suspended?: boolean;
     permissions?: string[];
+    // Per-license overrides of the policy's limits — omit to inherit
+    maxUses?: number;
+    maxMachines?: number;
+    maxProcesses?: number;
+    maxUsers?: number;
+    maxCores?: number;
+    /** Bytes */
+    maxMemory?: number;
+    /** Bytes */
+    maxDisk?: number;
   }): Promise<KeygenResponse<License>> {
     const body = {
       data: {
@@ -59,9 +228,10 @@ export class LicenseResource {
           name: licenseData.name,
           metadata: licenseData.metadata || {},
           expiry: licenseData.expiry,
-          maxUses: licenseData.maxUses,
+          ...buildLicenseLimits(licenseData),
           ...(licenseData.key ? { key: licenseData.key } : {}),
           ...(licenseData.protected !== undefined ? { protected: licenseData.protected } : {}),
+          ...(licenseData.suspended !== undefined ? { suspended: licenseData.suspended } : {}),
           ...(licenseData.permissions && licenseData.permissions.length > 0
             ? { permissions: licenseData.permissions }
             : {}),
@@ -70,9 +240,9 @@ export class LicenseResource {
           policy: {
             data: { type: 'policies', id: licenseData.policyId },
           },
-          ...(licenseData.userId && {
-            user: {
-              data: { type: 'users', id: licenseData.userId },
+          ...(licenseData.ownerId && {
+            owner: {
+              data: { type: 'users', id: licenseData.ownerId },
             },
           }),
           ...(licenseData.groupId && {
@@ -91,6 +261,16 @@ export class LicenseResource {
   }
 
   /**
+   * List the users attached to a license. This is the many-to-many `users`
+   * relationship, which is separate from the license's single `owner`.
+   */
+  async getUsers(id: string, options: PaginationOptions = {}): Promise<KeygenListResponse<User>> {
+    return this.client.request<User[]>(`licenses/${id}/users`, {
+      params: this.client.buildPaginationParams(options),
+    });
+  }
+
+  /**
    * Attach users to license (many-to-many users relationship)
    */
   async attachUsers(id: string, userIds: string[]): Promise<KeygenResponse<unknown>> {
@@ -101,7 +281,7 @@ export class LicenseResource {
       })),
     };
 
-    return this.client.request(`licenses/${id}/relationships/users`, {
+    return this.client.request(`licenses/${id}/users`, {
       method: 'POST',
       body,
     });
@@ -118,7 +298,7 @@ export class LicenseResource {
       })),
     };
 
-    await this.client.request(`licenses/${id}/relationships/users`, {
+    await this.client.request(`licenses/${id}/users`, {
       method: 'DELETE',
       body,
     });
@@ -127,12 +307,7 @@ export class LicenseResource {
   /**
    * Update a license
    */
-  async update(id: string, updates: {
-    name?: string;
-    metadata?: Record<string, unknown>;
-    expiry?: string;
-    maxUses?: number;
-  }): Promise<KeygenResponse<License>> {
+  async update(id: string, updates: LicenseUpdateInput): Promise<KeygenResponse<License>> {
     const body = {
       data: {
         type: 'licenses',
@@ -180,6 +355,101 @@ export class LicenseResource {
   async renew(id: string): Promise<KeygenResponse<License>> {
     return this.client.request<License>(`licenses/${id}/actions/renew`, {
       method: 'POST',
+    });
+  }
+
+  /**
+   * Validate a license by ID.
+   *
+   * Checks suspension, expiry, check-in overdue status and machine requirements.
+   * The outcome is in `meta.valid` / `meta.code` — note that a *failed*
+   * validation still returns HTTP 200, so callers must inspect `meta`, not
+   * rely on the request throwing.
+   */
+  async validate(
+    id: string,
+    options: { scope?: LicenseValidationScope; nonce?: number } = {}
+  ): Promise<LicenseValidationResult> {
+    const meta: Record<string, unknown> = {};
+    if (options.scope && Object.keys(options.scope).length > 0) {
+      meta.scope = options.scope;
+    }
+    if (options.nonce !== undefined) {
+      meta.nonce = options.nonce;
+    }
+
+    // The response carries the verdict in `meta`, which the generic
+    // KeygenResponse types only as Record<string, unknown>.
+    const response = await this.client.request<License>(`licenses/${id}/actions/validate`, {
+      method: 'POST',
+      ...(Object.keys(meta).length > 0 ? { body: { meta } } : {}),
+    });
+
+    return response as LicenseValidationResult;
+  }
+
+  /**
+   * Validate a license by key, without needing its ID. Unlike the other
+   * license endpoints this is not scoped to an ID, so it can be called with
+   * nothing but the key a customer pasted in.
+   *
+   * As with `validate()`, an invalid license comes back as HTTP 200 with
+   * `meta.valid === false`.
+   */
+  async validateKey(
+    key: string,
+    options: { scope?: LicenseValidationScope; nonce?: number } = {}
+  ): Promise<LicenseValidationResult> {
+    const meta: Record<string, unknown> = { key };
+    if (options.scope && Object.keys(options.scope).length > 0) {
+      meta.scope = options.scope;
+    }
+    if (options.nonce !== undefined) {
+      meta.nonce = options.nonce;
+    }
+
+    const response = await this.client.request<License>('licenses/actions/validate-key', {
+      method: 'POST',
+      body: { meta },
+    });
+
+    return response as LicenseValidationResult;
+  }
+
+  /**
+   * Revoke (delete) a license. Unlike `delete()`, this also immediately deletes
+   * every machine associated with the license. Cannot be undone.
+   *
+   * Note this is a DELETE, not a POST like the other actions.
+   */
+  async revoke(id: string): Promise<void> {
+    await this.client.request(`licenses/${id}/actions/revoke`, {
+      method: 'DELETE',
+    });
+  }
+
+  /**
+   * Check in a license, setting `lastCheckIn` to now and `nextCheckIn`
+   * according to the policy's check-in interval. Only meaningful for licenses
+   * whose policy sets `requireCheckIn` — those fail validation once overdue.
+   */
+  async checkIn(id: string): Promise<KeygenResponse<License>> {
+    return this.client.request<License>(`licenses/${id}/actions/check-in`, {
+      method: 'POST',
+    });
+  }
+
+  /**
+   * Increment license usage
+   */
+  async incrementUsage(id: string, increment = 1): Promise<KeygenResponse<License>> {
+    const body = {
+      meta: { increment },
+    };
+
+    return this.client.request<License>(`licenses/${id}/actions/increment-usage`, {
+      method: 'POST',
+      body,
     });
   }
 
@@ -267,10 +537,12 @@ export class LicenseResource {
   }
 
   /**
-   * Get license machines
+   * Get the machines activated against this license
    */
-  async getMachines(id: string): Promise<KeygenResponse<unknown[]>> {
-    return this.client.request(`licenses/${id}/machines`);
+  async getMachines(id: string, options: PaginationOptions = {}): Promise<KeygenListResponse<Machine>> {
+    return this.client.request<Machine[]>(`licenses/${id}/machines`, {
+      params: this.client.buildPaginationParams(options),
+    });
   }
 
   /**
@@ -288,14 +560,14 @@ export class LicenseResource {
   }
 
   /**
-   * Change license owner
+   * Change the license's owner. Pass `null` to unassign the current owner.
    */
-  async changeOwner(id: string, userId: string): Promise<KeygenResponse<License>> {
+  async changeOwner(id: string, userId: string | null): Promise<KeygenResponse<License>> {
     const body = {
-      data: { type: 'users', id: userId },
+      data: userId === null ? null : { type: 'users', id: userId },
     };
 
-    return this.client.request<License>(`licenses/${id}/user`, {
+    return this.client.request<License>(`licenses/${id}/owner`, {
       method: 'PUT',
       body,
     });
@@ -304,9 +576,9 @@ export class LicenseResource {
   /**
    * Change license group
    */
-  async changeGroup(id: string, groupId: string): Promise<KeygenResponse<License>> {
+  async changeGroup(id: string, groupId: string | null): Promise<KeygenResponse<License>> {
     const body = {
-      data: { type: 'groups', id: groupId },
+      data: groupId === null ? null : { type: 'groups', id: groupId },
     };
 
     return this.client.request<License>(`licenses/${id}/group`, {
@@ -319,16 +591,29 @@ export class LicenseResource {
    * Check out a signed (and optionally encrypted) offline license file.
    * Requires the license's policy to have a cryptographic scheme configured.
    *
-   * `ttl` is optional — Keygen defaults to a 1-month TTL if omitted. Pass `null`
-   * explicitly for a perpetual/irrevocable file with no expiry (Keygen advises
-   * against this: without a TTL, later changes — expiry, suspension, metadata —
-   * are never guaranteed to reach the offline install, since no re-checkout is
-   * ever required). Sent as the literal query string `ttl=null`, the standard
-   * convention for this Rails/JSON:API-style backend — unverified against a
-   * worked example in Keygen's docs, so double check the checked-out file's
-   * expiry comes back empty before relying on it.
+   * `ttl` is optional and must be at least 1 hour (3600); Keygen defaults to
+   * 2629746 (1 month). It may be set to `null` for a perpetual, irrevocable
+   * file, which Keygen recommends against: with no expiry, later changes to
+   * the license (expiry, suspension, metadata) are never guaranteed to reach
+   * the offline install, since no re-checkout is ever required.
+   *
+   * `encrypt` and `algorithm` are mutually exclusive — `encrypt` uses
+   * AES-256-GCM with a SHA256 digest of the license key as the secret, while
+   * `algorithm` names the encryption/signing pair explicitly.
    */
-  async checkOut(id: string, options: { ttl?: number | null; encrypt?: boolean; include?: string[] } = {}): Promise<KeygenResponse<License>> {
+  async checkOut(
+    id: string,
+    options: {
+      ttl?: number | null;
+      encrypt?: boolean;
+      algorithm?: LicenseFileAlgorithm;
+      include?: LicenseFileInclude[];
+    } = {}
+  ): Promise<KeygenResponse<License>> {
+    if (options.encrypt && options.algorithm) {
+      throw new Error('checkOut: `encrypt` and `algorithm` cannot be used together');
+    }
+
     const params: Record<string, unknown> = {};
     if (options.ttl === null) {
       params.ttl = 'null';
@@ -336,6 +621,7 @@ export class LicenseResource {
       params.ttl = options.ttl;
     }
     if (options.encrypt) params.encrypt = true;
+    if (options.algorithm) params.algorithm = options.algorithm;
     if (options.include && options.include.length > 0) params.include = options.include.join(',');
 
     return this.client.request<License>(`licenses/${id}/actions/check-out`, {

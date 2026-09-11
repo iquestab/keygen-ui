@@ -42,11 +42,14 @@ import {
   Key,
   Copy,
   Cpu,
+  HeartPulse,
+  FileDown,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { handleLoadError, handleCrudError } from '@/lib/utils/error-handling'
 import { ActivateMachineDialog } from './activate-machine-dialog'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import { CheckoutMachineDialog } from './checkout-machine-dialog'
 import { PaginationControls } from '@/components/shared/pagination-controls'
 
 const DEFAULT_PAGE_SIZE = 25
@@ -67,6 +70,8 @@ export function MachineManagement() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const api = getKeygenApi()
+  const [checkoutOpen, setCheckoutOpen] = useState(false)
+  const [checkoutMachine, setCheckoutMachine] = useState<Machine | null>(null)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [pendingMachine, setPendingMachine] = useState<Machine | null>(null)
   const [confirmLoading, setConfirmLoading] = useState(false)
@@ -159,39 +164,43 @@ export function MachineManagement() {
     }
   }, [currentPage, loadData])
 
-  // The API returns heartbeatStatus as e.g. "ALIVE" / "NOT_STARTED" — uppercase
-  // with underscores — while the rest of this file assumes the lowercase,
-  // hyphenated form the TS type declares. Normalize once at the source.
-  const normalizeHeartbeatStatus = (heartbeatStatus: string) =>
-    heartbeatStatus?.toLowerCase().replace(/_/g, '-') ?? ''
+  // A RESURRECTED machine was revived after going dead (under a policy with
+  // heartbeatResurrectionStrategy ALWAYS_REVIVE) and is beating again, so it
+  // counts as live alongside ALIVE.
+  const isLive = (machine: Machine) =>
+    machine.attributes.heartbeatStatus === 'ALIVE' ||
+    machine.attributes.heartbeatStatus === 'RESURRECTED'
 
   // Client-side heartbeat status filter — applied only to the currently
   // loaded page, since heartbeatStatus is not a confirmed server-searchable
   // field. This is on top of the properly paginated `machines` state.
   const filteredMachines = machines.filter(machine => {
-    const status = normalizeHeartbeatStatus(machine.attributes.heartbeatStatus)
+    const status = machine.attributes.heartbeatStatus
     const matchesStatus = statusFilter === 'all' ||
-      (statusFilter === 'active' && status === 'alive') ||
-      (statusFilter === 'inactive' && status === 'dead') ||
-      (statusFilter === 'not-started' && status === 'not-started')
+      (statusFilter === 'active' && isLive(machine)) ||
+      (statusFilter === 'inactive' && status === 'DEAD') ||
+      (statusFilter === 'not-started' && status === 'NOT_STARTED') ||
+      (statusFilter === 'resurrected' && status === 'RESURRECTED')
 
     return matchesStatus
   })
 
   const getStatusColor = (heartbeatStatus: string) => {
-    switch (normalizeHeartbeatStatus(heartbeatStatus)) {
-      case 'alive': return 'bg-green-100 text-green-800 border-green-200'
-      case 'dead': return 'bg-red-100 text-red-800 border-red-200'
-      case 'not-started': return 'bg-gray-100 text-gray-800 border-gray-200'
+    switch (heartbeatStatus) {
+      case 'ALIVE': return 'bg-green-100 text-green-800 border-green-200'
+      case 'RESURRECTED': return 'bg-teal-100 text-teal-800 border-teal-200'
+      case 'DEAD': return 'bg-red-100 text-red-800 border-red-200'
+      case 'NOT_STARTED': return 'bg-gray-100 text-gray-800 border-gray-200'
       default: return 'bg-gray-100 text-gray-800 border-gray-200'
     }
   }
 
   const getStatusIcon = (heartbeatStatus: string) => {
-    switch (normalizeHeartbeatStatus(heartbeatStatus)) {
-      case 'alive': return <CheckCircle className="h-3 w-3" />
-      case 'dead': return <AlertCircle className="h-3 w-3" />
-      case 'not-started': return <Activity className="h-3 w-3" />
+    switch (heartbeatStatus) {
+      case 'ALIVE': return <CheckCircle className="h-3 w-3" />
+      case 'RESURRECTED': return <HeartPulse className="h-3 w-3" />
+      case 'DEAD': return <AlertCircle className="h-3 w-3" />
+      case 'NOT_STARTED': return <Activity className="h-3 w-3" />
       default: return <Activity className="h-3 w-3" />
     }
   }
@@ -204,6 +213,11 @@ export function MachineManagement() {
       hour: '2-digit',
       minute: '2-digit'
     })
+  }
+
+  const handleCheckoutMachine = (machine: Machine) => {
+    setCheckoutMachine(machine)
+    setCheckoutOpen(true)
   }
 
   const handleDeleteMachine = (machine: Machine) => {
@@ -273,7 +287,7 @@ export function MachineManagement() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {machines.filter(m => normalizeHeartbeatStatus(m.attributes.heartbeatStatus) === 'alive').length}
+              {machines.filter(isLive).length}
             </div>
             <p className="text-xs text-muted-foreground">
               On current page
@@ -287,7 +301,7 @@ export function MachineManagement() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {machines.filter(m => normalizeHeartbeatStatus(m.attributes.heartbeatStatus) === 'dead').length}
+              {machines.filter(m => m.attributes.heartbeatStatus === 'DEAD').length}
             </div>
             <p className="text-xs text-muted-foreground">
               Offline machines
@@ -301,7 +315,7 @@ export function MachineManagement() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {machines.filter(m => normalizeHeartbeatStatus(m.attributes.heartbeatStatus) === 'not-started').length}
+              {machines.filter(m => m.attributes.heartbeatStatus === 'NOT_STARTED').length}
             </div>
             <p className="text-xs text-muted-foreground">
               Never activated
@@ -332,6 +346,7 @@ export function MachineManagement() {
             <SelectItem value="all">All Status</SelectItem>
             <SelectItem value="active">Active</SelectItem>
             <SelectItem value="inactive">Inactive</SelectItem>
+            <SelectItem value="resurrected">Resurrected</SelectItem>
             <SelectItem value="not-started">Not Started</SelectItem>
           </SelectContent>
         </Select>
@@ -390,7 +405,7 @@ export function MachineManagement() {
                         className={`${getStatusColor(machine.attributes.heartbeatStatus)} flex items-center gap-1 w-fit`}
                       >
                         {getStatusIcon(machine.attributes.heartbeatStatus)}
-                        {machine.attributes.heartbeatStatus?.replace('_', ' ').toLowerCase()}
+                        {machine.attributes.heartbeatStatus?.replace(/_/g, ' ').toLowerCase()}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -425,6 +440,11 @@ export function MachineManagement() {
                           <DropdownMenuItem onClick={() => copyFingerprint(machine.attributes.fingerprint || '')}>
                             <Copy className="mr-2 h-4 w-4" />
                             Copy Fingerprint
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => handleCheckoutMachine(machine)}>
+                            <FileDown className="mr-2 h-4 w-4" />
+                            Download Machine File
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem 
@@ -469,6 +489,13 @@ export function MachineManagement() {
           )}
         </CardContent>
       </Card>
+      {checkoutMachine && (
+        <CheckoutMachineDialog
+          machine={checkoutMachine}
+          open={checkoutOpen}
+          onOpenChange={setCheckoutOpen}
+        />
+      )}
       <ConfirmDialog
         open={confirmDeleteOpen}
         onOpenChange={setConfirmDeleteOpen}

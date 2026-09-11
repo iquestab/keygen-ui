@@ -16,8 +16,10 @@ const RECENT_COUNT = 8
 function getStatusColor(status: string) {
   switch (status.toLowerCase()) {
     case 'active': return 'bg-green-100 text-green-800 border-green-200'
+    case 'expiring': return 'bg-amber-100 text-amber-800 border-amber-200'
     case 'suspended': return 'bg-orange-100 text-orange-800 border-orange-200'
     case 'expired': return 'bg-red-100 text-red-800 border-red-200'
+    case 'banned': return 'bg-red-100 text-red-800 border-red-200'
     default: return 'bg-gray-100 text-gray-800 border-gray-200'
   }
 }

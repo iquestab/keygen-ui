@@ -4,6 +4,7 @@ import * as React from "react"
 import {
   IconKey,
   IconDeviceDesktop,
+  IconCpu,
   IconUsers,
   IconPackage,
   IconShield,
@@ -46,6 +47,11 @@ const data = {
       title: "Machines",
       url: "/machines", 
       icon: IconDeviceDesktop,
+    },
+    {
+      title: "Processes",
+      url: "/processes",
+      icon: IconCpu,
     },
     {
       title: "Products",

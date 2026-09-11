@@ -4,368 +4,122 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Keygen-UI is a comprehensive frontend interface for Keygen API licensing management. Built with Next.js 15, React 19, TypeScript, and Tailwind CSS v4, it provides complete CRUD operations for licenses, machines, products, policies, and users.
+Keygen-UI is a Next.js dashboard for administering a [Keygen](https://keygen.sh) licensing server — licenses, machines, products, policies, packages, releases, artifacts, channels, groups, entitlements, webhooks, and users.
 
-**Status**: Phase 1 Complete - Enhanced Production Ready ✅
-**API Integration**: Connected to Keygen instance at `https://lms.pvx.ai/v1`
-**Authentication**: Fully implemented with protected routes
+See also `AGENTS.md` (agent index) and `docs/` (`project-documentation.md`, `implementation-plan.md`, `keygen-api-configuration.md`). Note that parts of `docs/` and `README.md` have drifted from the code — prefer the source when they disagree.
 
-## Development Commands
+## Commands
 
-**IMPORTANT: This project uses PNPM as the package manager. Always use pnpm commands.**
+**PNPM only — never npm or yarn.**
 
 ```bash
-# Development server with Turbopack
-pnpm dev
+pnpm dev            # Dev server (Turbopack) on :3000
+pnpm build          # Production build (Turbopack, standalone output)
+pnpm start          # Serve the production build
+pnpm lint           # ESLint
+pnpm typecheck      # tsc --noEmit
 
-# Production build with Turbopack
-pnpm build
-
-# Start production server
-pnpm start
-
-# Run ESLint
-pnpm lint
-
-# TypeScript type checking
-pnpm typecheck
-
-# Install new dependencies
-pnpm add <package-name>
-
-# Install shadcn/ui components (REQUIRED for UI work)
-npx shadcn@latest add <component-name>
+npx shadcn@latest add <component>   # Install UI components (New York style, → src/components/ui/)
 ```
 
-## Architecture & Structure
+There is no test framework. `scripts/` holds ad-hoc integration probes run against a live Keygen instance; they are excluded from both `tsconfig.json` and ESLint:
 
-### Tech Stack
-- **Framework**: Next.js 15 with App Router and Turbopack
-- **UI**: React 19 + Tailwind CSS v4 + shadcn/ui (New York style)
-- **Language**: TypeScript with strict mode
-- **Package Manager**: PNPM (REQUIRED - never use npm or yarn)
-- **API Client**: Custom TypeScript client with full type safety
-- **Authentication**: React Context + localStorage with protected routes
-- **State Management**: React Context + SWR for data fetching
-- **Icons**: Lucide React
-- **Notifications**: Sonner toast notifications
-
-### Key Configuration
-- **Path Aliases**: `@/*` maps to `./src/*`
-- **shadcn/ui**: Configured with components.json for New York style, CSS variables, and component installation
-- **Tailwind CSS v4**: Using new PostCSS-based configuration
-- **Utilities**: `cn()` function in `src/lib/utils.ts` for className merging
-
-### Project Structure
-```
-src/
-├── app/                    # Next.js App Router pages and layouts
-│   ├── (dashboard)/        # Dashboard layout group
-│   │   ├── dashboard/      # Main dashboard page
-│   │   ├── licenses/       # License management
-│   │   ├── machines/       # Machine monitoring
-│   │   ├── products/       # Product management
-│   │   ├── policies/       # Policy management (placeholder)
-│   │   ├── users/          # User administration
-│   │   └── layout.tsx      # Dashboard layout with sidebar
-│   ├── login/              # Authentication pages
-│   ├── globals.css
-│   ├── layout.tsx
-│   └── page.tsx
-├── lib/                    # Utility functions and shared code
-│   ├── api/                # Keygen API client
-│   │   ├── client.ts       # Main API client
-│   │   ├── index.ts        # API exports
-│   │   └── resources/      # Resource-specific API methods
-│   ├── auth/               # Authentication context and utilities
-│   ├── types/              # TypeScript type definitions
-│   └── utils.ts            # Utility functions
-└── components/             # React components
-    ├── ui/                 # shadcn/ui components
-    ├── auth/               # Authentication components
-    ├── licenses/           # License management components
-    ├── machines/           # Machine management components
-    ├── products/           # Product management components
-    └── users/              # User management components
-```
-
-## Implementation Guidelines
-
-### MANDATORY Requirements
-
-1. **Package Manager**: ALWAYS use `pnpm` - never npm or yarn
-2. **UI Components**: MUST use shadcn/ui for all UI components
-3. **TypeScript**: All code must be fully typed
-4. **API Integration**: Use existing Keygen API client (`src/lib/api/`)
-5. **Authentication**: Use existing auth context (`src/lib/auth/context.tsx`)
-
-### shadcn/ui Component Installation
-
-**REQUIRED for all UI work:**
 ```bash
-npx shadcn@latest add [component-name]
+pnpm tsx scripts/test-keygen-auth.ts   # Verify credentials/account against the API
+pnpm tsx scripts/test-api-client.ts    # Exercise the KeygenClient end to end
 ```
 
-Components are installed to `@/components/ui/` with New York style and CSS variables.
+Both read `.env.local` and additionally need `KEYGEN_ADMIN_EMAIL` / `KEYGEN_ADMIN_PASSWORD`.
 
-### Coding Standards
-
-1. **File Naming**: Use kebab-case for files (e.g., `license-management.tsx`)
-2. **Component Naming**: Use PascalCase for components (e.g., `LicenseManagement`)
-3. **Client Components**: Add `'use client'` directive when using hooks or browser APIs
-4. **Error Handling**: Always implement proper error handling with toast notifications
-5. **Loading States**: Always show loading states during API calls
-6. **Form Validation**: Use proper form validation for all user inputs
-
-### API Integration Pattern
-
-```typescript
-// Use existing API client
-import { getKeygenApi } from '@/lib/api'
-
-const api = getKeygenApi()
-
-// Example API call with error handling
-try {
-  const response = await api.licenses.list({ limit: 50 })
-  setData(response.data || [])
-} catch (error: any) {
-  console.error('Failed to load data:', error)
-  toast.error('Failed to load data')
-}
-```
-
-### Component Structure
-
-```typescript
-'use client'
-
-import { useState, useEffect } from 'react'
-import { getKeygenApi } from '@/lib/api'
-import { Button } from '@/components/ui/button'
-import { toast } from 'sonner'
-
-export function ExampleComponent() {
-  const [loading, setLoading] = useState(true)
-  const api = getKeygenApi()
-  
-  // Implementation...
-}
-```
-
-## Environment Configuration
-
-The application requires only Keygen API connection settings:
+## Environment
 
 ```env
-NEXT_PUBLIC_KEYGEN_API_URL=https://your-keygen-host.com/v1
-NEXT_PUBLIC_KEYGEN_SINGLEPLAYER=true  # For Keygen CE singleplayer mode
+NEXT_PUBLIC_KEYGEN_API_URL=https://your-keygen-host.com/v1   # required, must include /v1
+NEXT_PUBLIC_KEYGEN_ACCOUNT_ID=                               # required unless singleplayer
+NEXT_PUBLIC_KEYGEN_SINGLEPLAYER=true                         # Keygen CE: drops /accounts/{id} from paths
 ```
 
-Authentication is handled client-side — the user enters their Keygen credentials on the login page, which are exchanged for an API token via the proxy route. No server-side auth secrets are needed.
+These are `NEXT_PUBLIC_*` and read at module scope, so Docker builds must pass them as `--build-arg` (see `Dockerfile`) — they are baked in at build time, not read at container start.
 
-## Docker Deployment
+## Architecture
 
-```bash
-# Build and deploy (from source repo)
-./deploy.sh  # Auto-bumps version, builds, pushes to registry, restarts container
+### The request path is the thing to understand first
 
-# Manual build
-docker build -t keygen-ui .
-docker run -p 9010:3000 -e NEXT_PUBLIC_KEYGEN_API_URL=https://your-host/v1 keygen-ui
+A browser API call never talks to Keygen directly. It goes:
+
+```
+Component → getKeygenApi() → KeygenClient.request()
+    → /api/keygen/<path>            (src/app/api/keygen/[...path]/route.ts)
+        → fetchKeygen()             (src/lib/server/keygen-fetch.ts)
+            → https://keygen-host/v1/<path>
 ```
 
-Production runs from `/opt/docker/keygen-ui/` (deploy-only dir with docker-compose.yml, .env, no source code).
+Three pieces make this work, and changes usually need to touch more than one:
 
-## Implemented Features
+1. **`KeygenClient.buildUrl()`** (`src/lib/api/client.ts`) is dual-mode. In the browser it rewrites every endpoint onto the `/api/keygen` proxy; on the server it hits `apiUrl` directly. It also injects the `/accounts/{accountId}` prefix unless `singleplayer` is set. Endpoints therefore come in three shapes — relative (`'licenses'`), account-scoped absolute (`'/tokens'`), and fully absolute (`'/v1/...'`) — each handled differently. Resource classes are inconsistent about which they use; both `'licenses'` and `'/artifacts'` appear and both work.
 
-### ✅ Complete Features
-- **Authentication System** (`/login`) - Full login/logout with protected routes
-- **Dashboard** (`/dashboard`) - Real-time analytics with Keygen API data
-- **License Management** (`/dashboard/licenses`) - Complete CRUD with professional dialogs, token generation
-- **Machine Management** (`/dashboard/machines`) - Monitor and manage devices
-- **Product Management** (`/dashboard/products`) - Product lifecycle management
-- **Policy Management** (`/dashboard/policies`) - Complete policy management with smart API-compliant creation
-- **Group Management** (`/dashboard/groups`) - **NEW** Complete group CRUD, user/license assignment
-- **Entitlement Management** (`/dashboard/entitlements`) - **NEW** Feature toggle management and license association
-- **Webhook Management** (`/dashboard/webhooks`) - **NEW** Real-time event notification configuration
-- **User Management** (`/dashboard/users`) - User administration with roles
+2. **The proxy route** validates against `ALLOWED_PATH_SEGMENTS` — a hardcoded allowlist of first path segments. **Adding a new Keygen resource requires adding its segment here**, or every request 400s with "Invalid API path". This has bitten the repo before (see the `search` segment fix in git history). The proxy forwards an incoming `Authorization` header when present (login sends Basic auth), otherwise falls back to the `keygen_session` httpOnly cookie.
 
-### Available API Resources
-- `api.licenses` - License management operations
-- `api.machines` - Machine monitoring operations  
-- `api.products` - Product management operations
-- `api.policies` - Policy management operations
-- `api.groups` - **NEW** Group management operations
-- `api.entitlements` - **NEW** Entitlement management operations
-- `api.webhooks` - **NEW** Webhook management and event notifications
-- `api.requestLogs` - **NEW** Request log analytics operations
-- `api.users` - User administration operations
+3. **`fetchKeygen()`** wraps `node-fetch` with a pinned `https.Agent` because Node's global `fetch` hits TLS errors against some Keygen hosts. Server-side Keygen calls should go through it rather than bare `fetch`.
 
-## Important Notes
+### Authentication
 
-- **Production Ready**: Phase 1 complete, fully functional enterprise-grade licensing platform
-- **Real API Integration**: Connected to live Keygen instance
-- **Type Safety**: Complete TypeScript coverage with strict mode
-- **Performance**: Optimized with Turbopack bundling
-- **Responsive Design**: Mobile-first approach with Tailwind CSS v4
-- **Error Handling**: Comprehensive error management throughout
-- **Enhanced Features**: Now includes Groups, Entitlements, Webhooks, and Request Logs support
+Token lives in an **httpOnly cookie** (`keygen_session`), not localStorage:
 
-## 🤖 Agentic Development Patterns & Troubleshooting
+- `AuthProvider` (`src/lib/auth/context.tsx`) calls `api.authenticate(email, password)`, which POSTs Basic-auth credentials to `/tokens` through the proxy.
+- The returned token is POSTed to `/api/auth/token`, which stores it httpOnly (7 days). It is also set on the in-memory client for the current tab's calls.
+- On mount, `checkAuth()` asks `/api/auth/token` whether a cookie exists (never receiving the value), then validates via `/api/auth/me` — a server route that reads the cookie and proxies `/me` so the token never reaches JS.
+- `<ProtectedRoute>` (optionally `requireAdmin`) wraps every dashboard page's content; pages themselves are thin server components.
+- After a full page reload the httpOnly cookie authenticates proxied requests, but the in-memory `KeygenClient` has no token — the proxy's cookie fallback is what keeps things working.
 
-### Critical Implementation Lessons Learned
+`src/proxy.ts` is the Next.js 16 proxy (formerly middleware) and only sets security headers (CSP, HSTS, frame options). It does no auth.
 
-#### 1. **Keygen API Parameter Constraints**
-**Issue**: Policy creation failed with "unpermitted parameter" errors
-**Root Cause**: Sending advanced strategy parameters during creation
-**Solution**: Use minimal approach - only send `name`, `duration` (optional), and product relationship
-**Pattern**: Always start with minimal required fields, then add optional ones incrementally
+### Error handling — errors are plain objects, not `Error` instances
+
+`KeygenClient.request()` throws structured **object literals** typed as `KeygenApiError` / `NetworkError` / `AuthError` / `ParseError` (`src/lib/types/errors.ts`). `err instanceof Error` is false for all of them and `console.error` serializes them poorly. Never inspect these by hand:
 
 ```typescript
-// ✅ CORRECT - Minimal policy creation
-const policyData = {
-  name: formData.name.trim()
-}
-// Add duration only if specified
-if (formData.duration) {
-  policyData.duration = parseInt(formData.duration)
-}
-```
+import { handleLoadError, handleCrudError, handleFormError } from '@/lib/utils/error-handling'
 
-#### 2. **Professional Dialog Patterns**
-**Anti-Pattern**: Using browser `confirm()` and `alert()` popups
-**Best Practice**: Always use shadcn dialogs with proper error handling
-
-```typescript
-// ✅ CORRECT - Professional delete dialog
-const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-const [selectedItem, setSelectedItem] = useState<Item | null>(null)
-
-const handleDelete = (item: Item) => {
-  setSelectedItem(item)
-  setDeleteDialogOpen(true)
-}
-```
-
-#### 3. **API Error Handling Patterns**
-**Critical**: Always handle specific HTTP status codes with user-friendly messages
-
-```typescript
-catch (error: any) {
-  if (error.status === 404) {
-    toast.error('Item not found - it may have been deleted')
-    onItemDeleted() // Refresh list
-  } else if (error.status === 422) {
-    toast.error('Cannot delete - item may be in use')
-  } else if (error.status === 403) {
-    toast.error('Permission denied')
-  } else {
-    toast.error(`Operation failed: ${error.message || 'Unknown error'}`)
-  }
-}
-```
-
-#### 4. **Empty Response Handling**
-**Issue**: JSON parsing errors on DELETE requests (empty responses)
-**Solution**: Handle empty responses gracefully in client
-
-```typescript
-// In client.ts - handle empty responses
 try {
-  data = await response.json()
-} catch (jsonError) {
-  if (response.ok && method === 'DELETE') {
-    data = null // DELETE often returns empty body
-  }
+  const response = await api.licenses.list({ page: { size: 25, number: 1 } })
+  setLicenses(response.data || [])
+} catch (error: unknown) {
+  handleLoadError(error, 'licenses')
 }
 ```
 
-### Development Workflow Patterns
+`error-handling.ts` maps status codes to toasts and accepts `onNotFound` / `onValidation` / `onForbidden` callbacks; `error-guards.ts` holds the type guards and message extraction (including flattening JSON:API `source.pointer` into "Duration: must be…"). Note `shouldShowToast()` suppresses toasts for 401 and validation errors on purpose — form code is expected to surface those inline.
 
-#### 1. **API-First Development**
-1. Test API endpoint with minimal data using console/script
-2. Implement API resource method
-3. Build UI component with proper error handling
-4. Add professional dialogs and loading states
+### API layer
 
-#### 2. **Error-Driven Development**  
-1. Implement basic functionality
-2. Test with edge cases and invalid data
-3. Handle all error scenarios with specific messages
-4. Add loading states and success feedback
+`src/lib/api/index.ts` composes one resource class per Keygen entity onto a singleton `KeygenApi`. Adding a resource means: a class in `src/lib/api/resources/`, a field + constructor line + re-export in `index.ts`, and the allowlist entry in the proxy route.
 
-#### 3. **Progressive Enhancement**
-1. Start with minimal required fields
-2. Add optional fields incrementally
-3. Test each addition separately
-4. Maintain backwards compatibility
+Query-param serialization in `request()` follows Rails conventions and is load-bearing: nested objects become `page[size]=25`, and arrays become repeated `roles[]=admin` — a bare repeated key gets collapsed to its last value by this API.
 
-### Common Debugging Techniques
+Pagination is `{ page: { size, number } }` (`PaginationOptions`); `limit` is also accepted for simple lists. `KeygenListResponse.meta` carries the total count that `<PaginationControls>` needs.
 
-#### 1. **API Request Debugging**
-```typescript
-// Temporary logging for debugging
-console.log('Sending data:', requestData)
-console.log('API response:', response)
-// Remove after debugging is complete
-```
+### Artifact upload (three-legged, deliberately unusual)
 
-#### 2. **Authentication Debugging**
-```typescript
-// Check token presence and format
-console.log('Token:', api.getToken()?.substring(0, 20) + '...')
-// Verify token is being sent in requests
-```
+`POST /artifacts` makes Keygen answer with a **307 to a pre-signed S3 URL** instead of a JSON body. Browsers can't read `Location` off a cross-origin redirect, so the proxy special-cases this path with `redirect: 'manual'` and converts it into a normal `200 { meta: { uploadUrl } }`. `ArtifactResource.create()` returns that URL, and `uploadArtifactFile()` (`src/lib/api/upload.ts`) PUTs the bytes **directly to S3, bypassing the proxy** — replaying our `Authorization` header there makes S3 reject the request. It uses `XMLHttpRequest` because only XHR exposes upload progress.
 
-#### 3. **Form Data Debugging**
-```typescript  
-// Log form data before API call
-console.log('Form data before processing:', formData)
-console.log('Processed API payload:', processedData)
-```
+### Search
 
-### Performance Optimization Patterns
+Free-text search is `POST /search` (`SearchResource`) with `meta.type` / `meta.query` / `meta.op`, not a list filter. Management components toggle between list mode and search mode (`isSearchMode`) depending on the debounced input; searchable fields differ per resource type.
 
-#### 1. **Conditional Rendering**
-```typescript
-// Only render dialogs when needed
-{selectedItem && (
-  <DeleteDialog
-    item={selectedItem}
-    open={deleteDialogOpen}
-    onOpenChange={setDeleteDialogOpen}
-  />
-)}
-```
+### UI conventions
 
-#### 2. **Efficient State Management**
-```typescript
-// Use single handler for multiple similar actions
-const handleAction = (action: string, item: Item) => {
-  switch (action) {
-    case 'edit': handleEdit(item); break;
-    case 'delete': handleDelete(item); break;
-  }
-}
-```
+Routes live under the `(dashboard)` route group, so paths are top-level: `/licenses`, `/machines`, `/releases/[id]` — **not** `/dashboard/licenses`. Only the overview page is at `/dashboard`. Nav entries live in `src/components/app-sidebar.tsx`.
 
-### Testing Strategies
+Each feature folder under `src/components/<feature>/` follows the same shape: a `<feature>-management.tsx` container (data fetching, table, filters, pagination, dialog state) plus sibling `create-`/`edit-`/`delete-`/`-details` dialogs. Copy the nearest existing feature rather than inventing a new layout.
 
-#### 1. **Console Testing Pattern**
-Create isolated test scripts for complex API operations before implementing in UI:
+Data fetching is plain `useState` + `useEffect` + `useCallback`. There is **no SWR, React Query, or global store**, despite what `docs/` claims — a mutation refreshes by re-invoking the loader passed down as `onXChanged`.
 
-```javascript
-// Test in browser console first
-async function testOperation() {
-  const api = getKeygenApi()
-  const result = await api.resource.operation(data)
-  console.log('Result:', result)
-}
-```
+Shared building blocks worth reusing: `shared/pagination-controls.tsx`, `shared/confirm-dialog.tsx`, `shared/entitlement-manager.tsx` (attaches entitlements to a policy or license).
 
-#### 2. **Error Scenario Testing**
-- Test with invalid data
-- Test with missing required fields  
-- Test with network failures
-- Test with expired tokens
+## Working notes
+
+- Keygen rejects unknown attributes with 422 "unpermitted parameter". Build creation payloads minimally — send `name` plus required relationships, and spread optional attributes in conditionally (`...(x ? { x } : {})`), as the resource classes already do.
+- `strict` TypeScript with `@typescript-eslint/no-explicit-any` as a warning; new code uses `unknown` in catch blocks and the error guards.
+- File naming is kebab-case; components are PascalCase; `'use client'` on anything with hooks.
+- DELETE responses are often empty — the client tolerates unparseable JSON on `ok` DELETEs and returns `null`.

@@ -29,7 +29,8 @@ import { format } from 'date-fns'
 import { Calendar as CalendarIcon, Plus, HelpCircle, RefreshCcw, X } from 'lucide-react'
 import { getKeygenApi } from '@/lib/api'
 import { Entitlement, Group, Policy, User } from '@/lib/types/keygen'
-import { handleFormError, handleLoadError } from '@/lib/utils/error-handling'
+import { handleCrudError, handleFormError, handleLoadError } from '@/lib/utils/error-handling'
+import { mibToBytes, parseOptionalInt } from '@/lib/utils/bytes'
 import { toast } from 'sonner'
 
 const SCHEME_LABELS: Record<string, string> = {
@@ -61,6 +62,12 @@ export function CreateLicenseDialog({ onLicenseCreated }: CreateLicenseDialogPro
     protected: true,
     permissions: '',
     maxUses: '',
+    maxMachines: '',
+    maxProcesses: '',
+    maxUsers: '',
+    maxCores: '',
+    maxMemoryMib: '',
+    maxDiskMib: '',
     expiry: undefined as Date | undefined,
 
   })
@@ -109,9 +116,12 @@ export function CreateLicenseDialog({ onLicenseCreated }: CreateLicenseDialogPro
     try {
       setLoading(true)
       
+      const maxMemoryMib = parseOptionalInt(formData.maxMemoryMib)
+      const maxDiskMib = parseOptionalInt(formData.maxDiskMib)
+
       const createRes = await api.licenses.create({
         policyId: formData.policyId,
-        userId: formData.userId === 'none' ? undefined : formData.userId || undefined,
+        ownerId: formData.userId === 'none' ? undefined : formData.userId || undefined,
         groupId: formData.groupId === 'none' ? undefined : formData.groupId || undefined,
         name: formData.name || undefined,
         key: formData.key || undefined,
@@ -119,7 +129,14 @@ export function CreateLicenseDialog({ onLicenseCreated }: CreateLicenseDialogPro
         permissions: formData.permissions
           ? formData.permissions.split(',').map((p) => p.trim()).filter(Boolean)
           : undefined,
-        maxUses: formData.maxUses.trim() ? parseInt(formData.maxUses) : undefined,
+        // Blank means "inherit the policy's limit", so leave those keys off entirely
+        maxUses: parseOptionalInt(formData.maxUses),
+        maxMachines: parseOptionalInt(formData.maxMachines),
+        maxProcesses: parseOptionalInt(formData.maxProcesses),
+        maxUsers: parseOptionalInt(formData.maxUsers),
+        maxCores: parseOptionalInt(formData.maxCores),
+        maxMemory: maxMemoryMib === undefined ? undefined : mibToBytes(maxMemoryMib),
+        maxDisk: maxDiskMib === undefined ? undefined : mibToBytes(maxDiskMib),
         expiry: formData.expiry ? formData.expiry.toISOString() : undefined,
         metadata: {
           ...metadata.reduce((acc, kv) => {
@@ -136,11 +153,14 @@ export function CreateLicenseDialog({ onLicenseCreated }: CreateLicenseDialogPro
       }
 
       if (createdId && selectedUsers.length > 0) {
-        // Best-effort: attach users if supported
+        // The license itself already exists at this point, so a failure here
+        // shouldn't discard it — report it and let the user retry from Edit.
         try {
           await api.licenses.attachUsers(createdId, selectedUsers)
-        } catch (err) {
-          console.warn('Attaching users failed or unsupported:', err)
+        } catch (err: unknown) {
+          handleCrudError(err, 'update', 'License users', {
+            customMessage: 'License created, but its additional users could not be attached',
+          })
         }
       }
 
@@ -167,6 +187,12 @@ export function CreateLicenseDialog({ onLicenseCreated }: CreateLicenseDialogPro
       protected: true,
       permissions: '',
       maxUses: '',
+      maxMachines: '',
+      maxProcesses: '',
+      maxUsers: '',
+      maxCores: '',
+      maxMemoryMib: '',
+      maxDiskMib: '',
       expiry: undefined,
     })
     setMetadata([])
@@ -335,6 +361,132 @@ export function CreateLicenseDialog({ onLicenseCreated }: CreateLicenseDialogPro
                     placeholder="Enter permissions…"
                     value={formData.permissions}
                     onChange={(e) => setFormData({ ...formData, permissions: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Limits */}
+            <div className="space-y-3">
+              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Limits
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Leave blank to inherit the policy&apos;s limit. Values here override the policy for this license only.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1">
+                    <Label htmlFor="maxMachines">Max Machines</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="size-3.5 text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent>How many machines can be activated against this license</TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <Input
+                    id="maxMachines"
+                    type="number"
+                    min="0"
+                    placeholder="Inherit from policy"
+                    value={formData.maxMachines}
+                    onChange={(e) => setFormData({ ...formData, maxMachines: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1">
+                    <Label htmlFor="maxProcesses">Max Processes</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="size-3.5 text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent>How many concurrent machine processes this license allows</TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <Input
+                    id="maxProcesses"
+                    type="number"
+                    min="0"
+                    placeholder="Inherit from policy"
+                    value={formData.maxProcesses}
+                    onChange={(e) => setFormData({ ...formData, maxProcesses: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1">
+                    <Label htmlFor="maxUsers">Max Users</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="size-3.5 text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent>How many users can be attached to this license</TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <Input
+                    id="maxUsers"
+                    type="number"
+                    min="0"
+                    placeholder="Inherit from policy"
+                    value={formData.maxUsers}
+                    onChange={(e) => setFormData({ ...formData, maxUsers: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1">
+                    <Label htmlFor="maxCores">Max CPU Cores</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="size-3.5 text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent>Total CPU cores summed across all of this license&apos;s machines</TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <Input
+                    id="maxCores"
+                    type="number"
+                    min="0"
+                    placeholder="Inherit from policy"
+                    value={formData.maxCores}
+                    onChange={(e) => setFormData({ ...formData, maxCores: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1">
+                    <Label htmlFor="maxMemoryMib">Max Memory (MiB)</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="size-3.5 text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent>Total memory summed across all of this license&apos;s machines</TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <Input
+                    id="maxMemoryMib"
+                    type="number"
+                    min="0"
+                    placeholder="Inherit from policy"
+                    value={formData.maxMemoryMib}
+                    onChange={(e) => setFormData({ ...formData, maxMemoryMib: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1">
+                    <Label htmlFor="maxDiskMib">Max Disk (MiB)</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="size-3.5 text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent>Total disk summed across all of this license&apos;s machines</TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <Input
+                    id="maxDiskMib"
+                    type="number"
+                    min="0"
+                    placeholder="Inherit from policy"
+                    value={formData.maxDiskMib}
+                    onChange={(e) => setFormData({ ...formData, maxDiskMib: e.target.value })}
                   />
                 </div>
               </div>

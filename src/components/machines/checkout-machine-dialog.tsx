@@ -17,39 +17,49 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { FileDown, HelpCircle, TriangleAlert } from 'lucide-react'
 import { getKeygenApi } from '@/lib/api'
 import { toast } from 'sonner'
-import { License } from '@/lib/types/keygen'
-import type { LicenseFileInclude } from '@/lib/api/resources/licenses'
+import { Machine } from '@/lib/types/keygen'
+import type { MachineFileInclude } from '@/lib/api/resources/machines'
 import { handleCrudError } from '@/lib/utils/error-handling'
 
 /**
- * Relationships that can be embedded in the license file so an offline install
- * can read them without calling the API.
+ * Relationships embeddable in the machine file. Unlike a license file — which
+ * cannot contain machines at all — a machine file reaches the other way, so the
+ * license and its config travel inside the file bound to this fingerprint.
  */
-const INCLUDE_OPTIONS: { value: LicenseFileInclude; label: string }[] = [
-  { value: 'entitlements', label: 'Entitlements' },
-  { value: 'policy', label: 'Policy' },
-  { value: 'product', label: 'Product' },
+const INCLUDE_OPTIONS: { value: MachineFileInclude; label: string }[] = [
+  { value: 'license', label: 'License' },
+  { value: 'license.policy', label: 'License policy' },
+  { value: 'license.entitlements', label: 'License entitlements' },
+  { value: 'license.product', label: 'License product' },
+  { value: 'license.owner', label: 'License owner' },
+  { value: 'license.users', label: 'License users' },
+  { value: 'components', label: 'Components' },
   { value: 'owner', label: 'Owner' },
-  { value: 'users', label: 'Users' },
   { value: 'group', label: 'Group' },
   { value: 'environment', label: 'Environment' },
 ]
 
-interface CheckoutLicenseDialogProps {
-  license: License
+interface CheckoutMachineDialogProps {
+  machine: Machine
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
-export function CheckoutLicenseDialog({ license, open, onOpenChange }: CheckoutLicenseDialogProps) {
+export function CheckoutMachineDialog({ machine, open, onOpenChange }: CheckoutMachineDialogProps) {
   const [loading, setLoading] = useState(false)
   const [ttlDays, setTtlDays] = useState('30')
   const [noExpiry, setNoExpiry] = useState(false)
   const [encrypt, setEncrypt] = useState(true)
-  const [include, setInclude] = useState<LicenseFileInclude[]>(['entitlements'])
+  // A machine file is most useful when the license travels with it — otherwise
+  // the offline install still has to reach the API to learn what it may do.
+  const [include, setInclude] = useState<MachineFileInclude[]>([
+    'license',
+    'license.policy',
+    'license.entitlements',
+  ])
   const api = getKeygenApi()
 
-  const toggleInclude = (value: LicenseFileInclude, checked: boolean) => {
+  const toggleInclude = (value: MachineFileInclude, checked: boolean) => {
     setInclude((current) =>
       checked ? [...current, value] : current.filter((item) => item !== value)
     )
@@ -71,15 +81,16 @@ export function CheckoutLicenseDialog({ license, open, onOpenChange }: CheckoutL
     try {
       setLoading(true)
 
-      const response = await api.licenses.checkOut(license.id, { ttl, encrypt, include })
+      const response = await api.machines.checkOut(machine.id, { ttl, encrypt, include })
       const certificate = response.data?.attributes?.certificate
 
       if (!certificate) {
-        toast.error('License file check-out did not return a certificate')
+        toast.error('Machine file check-out did not return a certificate')
         return
       }
 
-      const filename = `${(license.attributes.name || license.id).replace(/[^a-z0-9_-]+/gi, '_')}.lic`
+      const basename = machine.attributes.name || machine.attributes.fingerprint || machine.id
+      const filename = `${basename.replace(/[^a-z0-9_-]+/gi, '_')}.lic`
       const blob = new Blob([certificate], { type: 'text/plain' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -90,11 +101,12 @@ export function CheckoutLicenseDialog({ license, open, onOpenChange }: CheckoutL
       a.remove()
       URL.revokeObjectURL(url)
 
-      toast.success('License file downloaded')
+      toast.success('Machine file downloaded')
       onOpenChange(false)
     } catch (error: unknown) {
-      handleCrudError(error, 'create', 'License file', {
-        customMessage: "Failed to check out license file — the license's policy may not have a cryptographic scheme configured"
+      handleCrudError(error, 'create', 'Machine file', {
+        customMessage:
+          "Failed to check out machine file — the machine's license policy may not have a cryptographic scheme configured"
       })
     } finally {
       setLoading(false)
@@ -105,16 +117,17 @@ export function CheckoutLicenseDialog({ license, open, onOpenChange }: CheckoutL
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Download License File</DialogTitle>
+          <DialogTitle>Download Machine File</DialogTitle>
           <DialogDescription>
-            Check out a signed, offline-verifiable license file for {license.attributes.name || 'this license'}.
+            Check out a signed, offline-verifiable file bound to{' '}
+            {machine.attributes.name || 'this machine'}&apos;s fingerprint.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
           <div className="space-y-2">
             <div className="flex items-center gap-1">
-              <Label htmlFor="checkout-ttl">Valid for (days)</Label>
+              <Label htmlFor="machine-checkout-ttl">Valid for (days)</Label>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <HelpCircle className="size-3.5 text-muted-foreground" />
@@ -123,7 +136,7 @@ export function CheckoutLicenseDialog({ license, open, onOpenChange }: CheckoutL
               </Tooltip>
             </div>
             <Input
-              id="checkout-ttl"
+              id="machine-checkout-ttl"
               type="number"
               min="1"
               value={ttlDays}
@@ -131,21 +144,22 @@ export function CheckoutLicenseDialog({ license, open, onOpenChange }: CheckoutL
               disabled={noExpiry}
             />
           </div>
+
           <div className="space-y-2">
             <div className="flex items-center space-x-2">
               <Checkbox
-                id="checkout-no-expiry"
+                id="machine-checkout-no-expiry"
                 checked={noExpiry}
                 onCheckedChange={(checked) => setNoExpiry(!!checked)}
               />
-              <Label htmlFor="checkout-no-expiry">No expiry (not recommended)</Label>
+              <Label htmlFor="machine-checkout-no-expiry">No expiry (not recommended)</Label>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <HelpCircle className="size-3.5 text-muted-foreground" />
                 </TooltipTrigger>
                 <TooltipContent>
-                  Issues a perpetual, irrevocable file. Later changes to the license — expiry, suspension,
-                  metadata — are never guaranteed to reach this install, since no re-checkout is ever required.
+                  Issues a perpetual, irrevocable file. Later changes to the machine or its license —
+                  expiry, suspension, metadata — are never guaranteed to reach this install.
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -153,24 +167,28 @@ export function CheckoutLicenseDialog({ license, open, onOpenChange }: CheckoutL
               <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
                 <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
                 <span>
-                  This file never needs to be re-checked-out, so it will keep working even if you later suspend,
-                  revoke, or change this license.
+                  This file never needs to be re-checked-out, so it will keep working even if you
+                  later deactivate this machine or revoke its license.
                 </span>
               </div>
             )}
           </div>
+
           <div className="flex items-center space-x-2">
             <Checkbox
-              id="checkout-encrypt"
+              id="machine-checkout-encrypt"
               checked={encrypt}
               onCheckedChange={(checked) => setEncrypt(!!checked)}
             />
-            <Label htmlFor="checkout-encrypt">Encrypt file contents</Label>
+            <Label htmlFor="machine-checkout-encrypt">Encrypt file contents</Label>
             <Tooltip>
               <TooltipTrigger asChild>
                 <HelpCircle className="size-3.5 text-muted-foreground" />
               </TooltipTrigger>
-              <TooltipContent>Encrypts the license snapshot using the license key as the secret, in addition to signing it</TooltipContent>
+              <TooltipContent>
+                Encrypts the snapshot using the license key combined with this machine&apos;s
+                fingerprint as the secret, in addition to signing it
+              </TooltipContent>
             </Tooltip>
           </div>
 
@@ -182,8 +200,8 @@ export function CheckoutLicenseDialog({ license, open, onOpenChange }: CheckoutL
                   <HelpCircle className="size-3.5 text-muted-foreground" />
                 </TooltipTrigger>
                 <TooltipContent>
-                  Embeds these related records in the file so an offline install can read them
-                  without reaching the API.
+                  Embeds these related records so an offline install can read them without
+                  reaching the API.
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -191,12 +209,12 @@ export function CheckoutLicenseDialog({ license, open, onOpenChange }: CheckoutL
               {INCLUDE_OPTIONS.map((option) => (
                 <div key={option.value} className="flex items-center space-x-2">
                   <Checkbox
-                    id={`checkout-include-${option.value}`}
+                    id={`machine-checkout-include-${option.value}`}
                     checked={include.includes(option.value)}
                     onCheckedChange={(checked) => toggleInclude(option.value, !!checked)}
                   />
                   <Label
-                    htmlFor={`checkout-include-${option.value}`}
+                    htmlFor={`machine-checkout-include-${option.value}`}
                     className="text-sm font-normal"
                   >
                     {option.label}

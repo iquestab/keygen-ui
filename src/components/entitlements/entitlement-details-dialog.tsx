@@ -143,11 +143,11 @@ export function EntitlementDetailsDialog({
                 <div className="space-y-2">
                   {licenses.map((license) => (
                     <div key={license.id} className="flex items-center justify-between p-3 border rounded">
-                      <div className="space-y-1">
+                      <div className="space-y-1 min-w-0">
                         <p className="text-sm font-medium">
                           {license.attributes.name || 'Unnamed License'}
                         </p>
-                        <p className="text-xs text-muted-foreground font-mono">
+                        <p className="text-xs text-muted-foreground font-mono break-all">
                           {license.attributes.key}
                         </p>
                         <div className="flex items-center gap-2">

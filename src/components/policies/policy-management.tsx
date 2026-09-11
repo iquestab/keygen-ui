@@ -155,7 +155,44 @@ export function PolicyManagement() {
       (typeFilter === 'strict' && policy.attributes.strict)
   })
 
-  const getExpirationText = (duration?: number) => {
+  // Only lists the limits the policy actually sets — an unset limit means
+  // unlimited, which is not worth a row.
+  const getPolicyLimits = (policy: Policy) => {
+    const { attributes } = policy
+    const rows: { label: string; value: string }[] = []
+
+    const add = (label: string, value?: number | null) => {
+      if (value != null) rows.push({ label, value: value.toLocaleString() })
+    }
+    const addAlways = (label: string, value?: number | null) => {
+      rows.push({ label, value: value == null ? 'Unlimited' : value.toLocaleString() })
+    }
+    const addBytes = (label: string, value?: number | null) => {
+      if (value == null) return
+      const mib = value / (1024 * 1024)
+      rows.push({
+        label,
+        value: mib >= 1024
+          ? `${(mib / 1024).toLocaleString(undefined, { maximumFractionDigits: 1 })} GiB`
+          : `${Math.round(mib).toLocaleString()} MiB`,
+      })
+    }
+
+    // Machines and processes are the seat dimensions, so they are always listed —
+    // a missing row would be ambiguous between "unlimited" and "not configured".
+    // The rest only appear when actually set.
+    addAlways('Machines', attributes.maxMachines)
+    addAlways('Processes', attributes.maxProcesses)
+    add('Users', attributes.maxUsers)
+    add('Cores', attributes.maxCores)
+    add('Uses', attributes.maxUses)
+    addBytes('Memory', attributes.maxMemory)
+    addBytes('Disk', attributes.maxDisk)
+
+    return rows
+  }
+
+  const getExpirationText = (duration?: number | null) => {
     if (!duration) return 'Never expires'
     
     const days = Math.floor(duration / (24 * 60 * 60))
@@ -350,15 +387,14 @@ export function PolicyManagement() {
                   </TableCell>
                   <TableCell>
                     <div className="text-sm space-y-1">
-                      {policy.attributes.maxMachines && (
-                        <div>Machines: {policy.attributes.maxMachines}</div>
-                      )}
-                      {policy.attributes.maxProcesses && (
-                        <div>Processes: {policy.attributes.maxProcesses}</div>
-                      )}
-                      {policy.attributes.maxUses && (
-                        <div>Uses: {policy.attributes.maxUses}</div>
-                      )}
+                      {getPolicyLimits(policy).map(({ label, value }) => (
+                        <div key={label}>
+                          {label}:{' '}
+                          <span className={value === 'Unlimited' ? 'text-muted-foreground' : undefined}>
+                            {value}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   </TableCell>
                   <TableCell>

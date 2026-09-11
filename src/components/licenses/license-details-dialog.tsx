@@ -37,10 +37,27 @@ const heartbeatIcon = (heartbeatStatus: string) => {
   }
 }
 
+// A null limit means the license has no override and inherits its policy's value
+const formatLimit = (value?: number | null) =>
+  value == null ? 'Policy default' : value.toLocaleString()
+
+const formatByteLimit = (value?: number | null) => {
+  if (value == null) return 'Policy default'
+
+  const mib = value / (1024 * 1024)
+  return mib >= 1024
+    ? `${(mib / 1024).toLocaleString(undefined, { maximumFractionDigits: 1 })} GiB`
+    : `${Math.round(mib).toLocaleString()} MiB`
+}
+
 export function LicenseDetailsDialog({ license, open, onOpenChange }: LicenseDetailsDialogProps) {
   const [machines, setMachines] = useState<Machine[]>([])
   const [machineCount, setMachineCount] = useState(0)
   const [loadingMachines, setLoadingMachines] = useState(false)
+  // Process seats have to be counted with their own request — unlike machines,
+  // no relationship on the license carries a process count.
+  const [processCount, setProcessCount] = useState<number | null>(null)
+  const [policyMaxProcesses, setPolicyMaxProcesses] = useState<number | null>(null)
 
   const api = getKeygenApi()
 
@@ -59,13 +76,43 @@ export function LicenseDetailsDialog({ license, open, onOpenChange }: LicenseDet
     }
   }, [api.machines, license.id])
 
+  const loadProcessUsage = useCallback(async () => {
+    try {
+      // Ask for real rows rather than just meta.count — not all instances return
+      // a count on this endpoint, in which case the rows are the only source.
+      const response = await api.processes.list({ license: license.id, limit: 100 })
+      setProcessCount(response.meta?.count ?? (response.data?.length || 0))
+    } catch {
+      // Non-fatal — the seat row is simply omitted
+      setProcessCount(null)
+    }
+
+    // maxProcesses is inherited from the policy unless the license overrides it
+    if (license.attributes.maxProcesses != null) {
+      setPolicyMaxProcesses(license.attributes.maxProcesses)
+      return
+    }
+
+    const policyRef = license.relationships?.policy?.data
+    const policyId = policyRef && !Array.isArray(policyRef) ? policyRef.id : undefined
+    if (!policyId) return
+
+    try {
+      const response = await api.policies.get(policyId)
+      setPolicyMaxProcesses(response.data?.attributes.maxProcesses ?? null)
+    } catch {
+      setPolicyMaxProcesses(null)
+    }
+  }, [api.processes, api.policies, license])
+
   useEffect(() => {
     if (open && license.id) {
       loadMachines()
+      loadProcessUsage()
     }
-  }, [open, license.id, loadMachines])
+  }, [open, license.id, loadMachines, loadProcessUsage])
 
-  const formatDate = (dateString?: string) => {
+  const formatDate = (dateString?: string | null) => {
     if (!dateString) return 'Never'
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -132,6 +179,93 @@ export function LicenseDetailsDialog({ license, open, onOpenChange }: LicenseDet
                     {license.attributes.expiry ? formatDate(license.attributes.expiry) : 'Never'}
                   </p>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Uses</label>
+                  <p className="text-sm">
+                    {license.attributes.uses ?? 0}
+                    {license.attributes.maxUses != null && ` / ${license.attributes.maxUses}`}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Process Seats</label>
+                  <p className="text-sm">
+                    {processCount === null ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : (
+                      <>
+                        {processCount}
+                        {policyMaxProcesses != null && (
+                          <span className="text-muted-foreground"> / {policyMaxProcesses}</span>
+                        )}
+                      </>
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Last Validated</label>
+                  <p className="text-sm">{formatDate(license.attributes.lastValidated)}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Last Checked Out</label>
+                  <p className="text-sm">{formatDate(license.attributes.lastCheckOut)}</p>
+                </div>
+              </div>
+
+              {license.attributes.requireCheckIn && (
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Last Check-In</label>
+                    <p className="text-sm">{formatDate(license.attributes.lastCheckIn)}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Next Check-In</label>
+                    <p className="text-sm">{formatDate(license.attributes.nextCheckIn)}</p>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Limits</label>
+                <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Machines: </span>
+                    {formatLimit(license.attributes.maxMachines)}
+                  </div>
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Processes: </span>
+                    {formatLimit(license.attributes.maxProcesses)}
+                  </div>
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Users: </span>
+                    {formatLimit(license.attributes.maxUsers)}
+                  </div>
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Cores: </span>
+                    {formatLimit(license.attributes.maxCores)}
+                  </div>
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Memory: </span>
+                    {formatByteLimit(license.attributes.maxMemory)}
+                  </div>
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Disk: </span>
+                    {formatByteLimit(license.attributes.maxDisk)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {license.attributes.protected && <Badge variant="outline">Protected</Badge>}
+                {license.attributes.floating && <Badge variant="outline">Floating</Badge>}
+                {license.attributes.strict && <Badge variant="outline">Strict</Badge>}
+                {license.attributes.requireHeartbeat && <Badge variant="outline">Requires heartbeat</Badge>}
+                {license.attributes.requireCheckIn && <Badge variant="outline">Requires check-in</Badge>}
+                {license.attributes.version && (
+                  <Badge variant="outline">Version {license.attributes.version}</Badge>
+                )}
               </div>
             </CardContent>
           </Card>

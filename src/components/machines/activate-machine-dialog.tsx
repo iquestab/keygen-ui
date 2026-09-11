@@ -23,6 +23,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Plus, HelpCircle } from 'lucide-react'
 import { getKeygenApi } from '@/lib/api'
+import { mibToBytes, parseOptionalInt } from '@/lib/utils/bytes'
 import { License } from '@/lib/types/keygen'
 import { handleFormError, handleLoadError } from '@/lib/utils/error-handling'
 import { toast } from 'sonner'
@@ -43,6 +44,8 @@ export function ActivateMachineDialog({ onMachineActivated }: ActivateMachineDia
     platform: '',
     hostname: '',
     cores: '',
+    memoryMib: '',
+    diskMib: '',
     ip: ''
   })
 
@@ -88,13 +91,18 @@ export function ActivateMachineDialog({ onMachineActivated }: ActivateMachineDia
     try {
       setLoading(true)
       
+      const memoryMib = parseOptionalInt(formData.memoryMib)
+      const diskMib = parseOptionalInt(formData.diskMib)
+
       await api.machines.activate({
         fingerprint: formData.fingerprint.trim(),
         licenseId: formData.licenseId,
         name: formData.name.trim() || undefined,
         platform: formData.platform.trim() || undefined,
         hostname: formData.hostname.trim() || undefined,
-        cores: formData.cores ? parseInt(formData.cores) : undefined,
+        cores: parseOptionalInt(formData.cores),
+        memory: memoryMib === undefined ? undefined : mibToBytes(memoryMib),
+        disk: diskMib === undefined ? undefined : mibToBytes(diskMib),
         ip: formData.ip.trim() || undefined
       })
 
@@ -107,6 +115,8 @@ export function ActivateMachineDialog({ onMachineActivated }: ActivateMachineDia
         platform: '',
         hostname: '',
         cores: '',
+        memoryMib: '',
+        diskMib: '',
         ip: ''
       })
       onMachineActivated?.()
@@ -265,6 +275,44 @@ export function ActivateMachineDialog({ onMachineActivated }: ActivateMachineDia
                 placeholder="e.g., 8"
                 value={formData.cores}
                 onChange={(e) => setFormData({ ...formData, cores: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-1">
+                <Label htmlFor="memoryMib">Memory (MiB)</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Memory on this machine — useful if the policy enforces memory-based limits</TooltipContent>
+                </Tooltip>
+              </div>
+              <Input
+                id="memoryMib"
+                type="number"
+                min="0"
+                placeholder="e.g., 16384"
+                value={formData.memoryMib}
+                onChange={(e) => setFormData({ ...formData, memoryMib: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-1">
+                <Label htmlFor="diskMib">Disk (MiB)</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Disk on this machine — useful if the policy enforces disk-based limits</TooltipContent>
+                </Tooltip>
+              </div>
+              <Input
+                id="diskMib"
+                type="number"
+                min="0"
+                placeholder="e.g., 512000"
+                value={formData.diskMib}
+                onChange={(e) => setFormData({ ...formData, diskMib: e.target.value })}
               />
             </div>
           </div>
