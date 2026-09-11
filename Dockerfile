@@ -16,7 +16,10 @@ RUN corepack enable pnpm
 RUN addgroup --system --gid 1001 buildgroup && adduser --system --uid 1001 builduser
 RUN chown builduser:buildgroup /app
 
-COPY --from=deps /app/node_modules ./node_modules
+# node_modules must be owned by the build user too — pnpm verifies (and may
+# rewrite) the modules directory before running a script, which fails with
+# EACCES if the tree is still root-owned from the deps stage.
+COPY --from=deps --chown=builduser:buildgroup /app/node_modules ./node_modules
 COPY --chown=builduser:buildgroup . .
 
 USER builduser
